@@ -2,6 +2,7 @@ require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
 const jwt = require('jsonwebtoken')
+const bcrypt = require('bcryptjs')
 const { createClient } = require('@supabase/supabase-js')
 
 const supabase = createClient(
@@ -144,6 +145,101 @@ app.post('/candidatures', async (req, res) => {
     .single()
   if (error) return res.status(500).json({ error: error.message })
   res.json({ id: data.id, message: 'Candidature envoyée' })
+})
+
+// ─── AUTHENTIFICATION ─────────────────────────────────────────────────────────
+
+// Inscription influenceur
+app.post('/auth/inscription-influenceur', async (req, res) => {
+  const { nom, email, mot_de_passe, reseau, abonnes } = req.body
+  if (!nom || !email || !mot_de_passe || !reseau || !abonnes) {
+    return res.status(400).json({ error: 'Tous les champs sont requis' })
+  }
+  if (!['instagram', 'tiktok'].includes(reseau)) {
+    return res.status(400).json({ error: 'Réseau invalide (instagram ou tiktok)' })
+  }
+  if (Number(abonnes) < 1000) {
+    return res.status(400).json({ error: 'Minimum 1 000 abonnés requis' })
+  }
+  const hash = await bcrypt.hash(mot_de_passe, 10)
+  const { data, error } = await supabase
+    .from('influenceurs')
+    .insert({ nom, email, mot_de_passe: hash, reseau, abonnes: Number(abonnes) })
+    .select('id, nom, email, reseau, abonnes, statut')
+    .single()
+  if (error) {
+    if (error.code === '23505') return res.status(409).json({ error: 'Email déjà utilisé' })
+    return res.status(500).json({ error: error.message })
+  }
+  const token = jwt.sign({ id: data.id, role: 'influenceur' }, JWT_SECRET, { expiresIn: '7d' })
+  res.json({ token, utilisateur: data })
+})
+
+// Inscription restaurateur
+app.post('/auth/inscription-restaurateur', async (req, res) => {
+  const { nom, email, mot_de_passe, nom_etablissement, adresse } = req.body
+  if (!nom || !email || !mot_de_passe || !nom_etablissement || !adresse) {
+    return res.status(400).json({ error: 'Tous les champs sont requis' })
+  }
+  const hash = await bcrypt.hash(mot_de_passe, 10)
+
+  // Créer le compte restaurateur dans influenceurs avec rôle restaurateur
+  const { data: resto, error: restoError } = await supabase
+    .from('restaurants')
+    .insert({ nom: nom_etablissement, adresse, email, statut: 'Ouvert' })
+    .select('id')
+    .single()
+  if (restoError) return res.status(500).json({ error: restoError.message })
+
+  const { data, error } = await supabase
+    .from('restaurateurs')
+    .insert({ nom, email, mot_de_passe: hash, restaurant_id: resto.id })
+    .select('id, nom, email, restaurant_id')
+    .single()
+  if (error) {
+    if (error.code === '23505') return res.status(409).json({ error: 'Email déjà utilisé' })
+    return res.status(500).json({ error: error.message })
+  }
+  const token = jwt.sign({ id: data.id, role: 'restaurateur', restaurant_id: resto.id }, JWT_SECRET, { expiresIn: '7d' })
+  res.json({ token, utilisateur: data })
+})
+
+// Connexion (influenceur ou restaurateur)
+app.post('/auth/connexion', async (req, res) => {
+  const { email, mot_de_passe } = req.body
+  if (!email || !mot_de_passe) return res.status(400).json({ error: 'Email et mot de passe requis' })
+
+  // Chercher d'abord dans influenceurs
+  const { data: influenceur } = await supabase
+    .from('influenceurs')
+    .select('id, nom, email, mot_de_passe, reseau, abonnes, statut')
+    .eq('email', email)
+    .single()
+
+  if (influenceur) {
+    const ok = await bcrypt.compare(mot_de_passe, influenceur.mot_de_passe)
+    if (!ok) return res.status(401).json({ error: 'Mot de passe incorrect' })
+    const token = jwt.sign({ id: influenceur.id, role: 'influenceur' }, JWT_SECRET, { expiresIn: '7d' })
+    const { mot_de_passe: _, ...utilisateur } = influenceur
+    return res.json({ token, utilisateur: { ...utilisateur, role: 'influenceur' } })
+  }
+
+  // Chercher dans restaurateurs
+  const { data: restaurateur } = await supabase
+    .from('restaurateurs')
+    .select('id, nom, email, mot_de_passe, restaurant_id')
+    .eq('email', email)
+    .single()
+
+  if (restaurateur) {
+    const ok = await bcrypt.compare(mot_de_passe, restaurateur.mot_de_passe)
+    if (!ok) return res.status(401).json({ error: 'Mot de passe incorrect' })
+    const token = jwt.sign({ id: restaurateur.id, role: 'restaurateur', restaurant_id: restaurateur.restaurant_id }, JWT_SECRET, { expiresIn: '7d' })
+    const { mot_de_passe: _, ...utilisateur } = restaurateur
+    return res.json({ token, utilisateur: { ...utilisateur, role: 'restaurateur' } })
+  }
+
+  return res.status(404).json({ error: 'Aucun compte trouvé avec cet email' })
 })
 
 // ─── ROUTES ADMIN ─────────────────────────────────────────────────────────────
