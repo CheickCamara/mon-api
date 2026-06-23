@@ -1,8 +1,6 @@
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
-const Database = require('better-sqlite3')
-const path = require('path')
 const jwt = require('jsonwebtoken')
 const { createClient } = require('@supabase/supabase-js')
 
@@ -19,33 +17,6 @@ const JWT_SECRET = process.env.JWT_SECRET
 app.use(cors())
 app.use(express.json())
 
-const db = new Database(path.join(__dirname, 'restaurants.db'))
-
-// Création des tables si elles n'existent pas encore
-db.exec(`
-  CREATE TABLE IF NOT EXISTS influenceurs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nom TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    mot_de_passe TEXT NOT NULL,
-    reseau TEXT NOT NULL,
-    abonnes INTEGER NOT NULL,
-    statut TEXT DEFAULT 'en_attente',
-    date_inscription TEXT DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS candidatures (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    influenceur_id INTEGER NOT NULL,
-    restaurant_id INTEGER NOT NULL,
-    statut TEXT DEFAULT 'en_attente',
-    post_publie INTEGER DEFAULT 0,
-    date_candidature TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (influenceur_id) REFERENCES influenceurs(id),
-    FOREIGN KEY (restaurant_id) REFERENCES restaurants(id)
-  );
-`)
-
 // Middleware protection admin via token JWT
 function adminAuth(req, res, next) {
   const auth = req.headers['authorization']
@@ -60,8 +31,9 @@ function adminAuth(req, res, next) {
   }
 }
 
-// ─── ROUTES PUBLIQUES ────────────────────────────────────────────────────────
+// ─── ROUTES PUBLIQUES ─────────────────────────────────────────────────────────
 
+// Tous les restaurants
 app.get('/restaurants', async (req, res) => {
   const { data, error } = await supabase
     .from('restaurants')
@@ -70,6 +42,7 @@ app.get('/restaurants', async (req, res) => {
   res.json(data)
 })
 
+// Un restaurant par id
 app.get('/restaurants/:id', async (req, res) => {
   const { data, error } = await supabase
     .from('restaurants')
@@ -80,36 +53,102 @@ app.get('/restaurants/:id', async (req, res) => {
   res.json(data)
 })
 
+// Toutes les offres actives (avec infos du restaurant)
+app.get('/offres', async (req, res) => {
+  const { data, error } = await supabase
+    .from('offres')
+    .select(`
+      id, titre, description, menu, valeur_indicative,
+      contrepartie, nombre_places, places_restantes,
+      tranche_min, tranche_max, statut, conditions, date_creation,
+      restaurants (id, nom, adresse, lat, lng, image)
+    `)
+    .eq('statut', 'active')
+    .gt('places_restantes', 0)
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
+})
+
+// Une offre par id
+app.get('/offres/:id', async (req, res) => {
+  const { data, error } = await supabase
+    .from('offres')
+    .select(`
+      id, titre, description, menu, valeur_indicative,
+      contrepartie, nombre_places, places_restantes,
+      tranche_min, tranche_max, statut, conditions, date_creation,
+      restaurants (id, nom, adresse, lat, lng, image)
+    `)
+    .eq('id', req.params.id)
+    .single()
+  if (error) return res.status(404).json({ error: 'Offre non trouvée' })
+  res.json(data)
+})
+
 // Inscription influenceur
-app.post('/inscription', (req, res) => {
+app.post('/inscription', async (req, res) => {
   const { nom, email, mot_de_passe, reseau, abonnes } = req.body
   if (!nom || !email || !mot_de_passe || !reseau || !abonnes) {
     return res.status(400).json({ error: 'Tous les champs sont requis' })
   }
-  try {
-    const result = db.prepare(
-      'INSERT INTO influenceurs (nom, email, mot_de_passe, reseau, abonnes) VALUES (?, ?, ?, ?, ?)'
-    ).run(nom, email, mot_de_passe, reseau, Number(abonnes))
-    res.json({ id: result.lastInsertRowid, message: 'Inscription enregistrée' })
-  } catch (e) {
-    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email déjà utilisé' })
-    res.status(500).json({ error: 'Erreur serveur' })
+  if (!['instagram', 'tiktok'].includes(reseau)) {
+    return res.status(400).json({ error: 'Réseau invalide (instagram ou tiktok)' })
   }
+  if (Number(abonnes) < 1000) {
+    return res.status(400).json({ error: 'Minimum 1 000 abonnés requis' })
+  }
+  const { data, error } = await supabase
+    .from('influenceurs')
+    .insert({ nom, email, mot_de_passe, reseau, abonnes: Number(abonnes) })
+    .select('id')
+    .single()
+  if (error) {
+    if (error.code === '23505') return res.status(409).json({ error: 'Email déjà utilisé' })
+    return res.status(500).json({ error: error.message })
+  }
+  res.json({ id: data.id, message: 'Inscription enregistrée' })
 })
 
-// Candidature d'un influenceur à un restaurant
-app.post('/candidatures', (req, res) => {
-  const { influenceur_id, restaurant_id } = req.body
-  if (!influenceur_id || !restaurant_id) return res.status(400).json({ error: 'Champs manquants' })
-  const result = db.prepare(
-    'INSERT INTO candidatures (influenceur_id, restaurant_id) VALUES (?, ?)'
-  ).run(influenceur_id, restaurant_id)
-  res.json({ id: result.lastInsertRowid, message: 'Candidature envoyée' })
+// Candidature d'un influenceur à une offre
+app.post('/candidatures', async (req, res) => {
+  const { influenceur_id, offre_id } = req.body
+  if (!influenceur_id || !offre_id) return res.status(400).json({ error: 'Champs manquants' })
+
+  // Vérifier que l'offre est active et a des places
+  const { data: offre, error: offreError } = await supabase
+    .from('offres')
+    .select('id, places_restantes, tranche_min, tranche_max, restaurant_id')
+    .eq('id', offre_id)
+    .single()
+  if (offreError || !offre) return res.status(404).json({ error: 'Offre non trouvée' })
+  if (offre.places_restantes <= 0) return res.status(400).json({ error: 'Plus de places disponibles' })
+
+  // Vérifier l'éligibilité de l'influenceur
+  const { data: influenceur } = await supabase
+    .from('influenceurs')
+    .select('abonnes')
+    .eq('id', influenceur_id)
+    .single()
+  if (!influenceur) return res.status(404).json({ error: 'Influenceur non trouvé' })
+  if (influenceur.abonnes < offre.tranche_min) {
+    return res.status(400).json({ error: `Minimum ${offre.tranche_min} abonnés requis pour cette offre` })
+  }
+  if (offre.tranche_max && influenceur.abonnes > offre.tranche_max) {
+    return res.status(400).json({ error: 'Ton audience dépasse le ciblage de cette offre' })
+  }
+
+  const { data, error } = await supabase
+    .from('candidatures')
+    .insert({ influenceur_id, offre_id, restaurant_id: offre.restaurant_id })
+    .select('id')
+    .single()
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ id: data.id, message: 'Candidature envoyée' })
 })
 
 // ─── ROUTES ADMIN ─────────────────────────────────────────────────────────────
 
-// Connexion admin — renvoie un token valable 24h
+// Connexion admin
 app.post('/admin/login', (req, res) => {
   const { password } = req.body
   if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Mot de passe incorrect' })
@@ -118,100 +157,174 @@ app.post('/admin/login', (req, res) => {
 })
 
 // Statistiques générales
-app.get('/admin/stats', adminAuth, (req, res) => {
-  const total_influenceurs = db.prepare('SELECT COUNT(*) as n FROM influenceurs').get().n
-  const en_attente = db.prepare("SELECT COUNT(*) as n FROM influenceurs WHERE statut = 'en_attente'").get().n
-  const valides = db.prepare("SELECT COUNT(*) as n FROM influenceurs WHERE statut = 'valide'").get().n
-  const refuses = db.prepare("SELECT COUNT(*) as n FROM influenceurs WHERE statut = 'refuse'").get().n
-  const total_candidatures = db.prepare('SELECT COUNT(*) as n FROM candidatures').get().n
-  const candidatures_en_attente = db.prepare("SELECT COUNT(*) as n FROM candidatures WHERE statut = 'en_attente'").get().n
-  const posts_publies = db.prepare('SELECT COUNT(*) as n FROM candidatures WHERE post_publie = 1').get().n
-  const total_restaurants = db.prepare('SELECT COUNT(*) as n FROM restaurants').get().n
+app.get('/admin/stats', adminAuth, async (req, res) => {
+  const [
+    { count: total_influenceurs },
+    { count: en_attente },
+    { count: valides },
+    { count: refuses },
+    { count: total_candidatures },
+    { count: candidatures_en_attente },
+    { count: posts_publies },
+    { count: total_restaurants },
+    { count: total_offres },
+  ] = await Promise.all([
+    supabase.from('influenceurs').select('*', { count: 'exact', head: true }),
+    supabase.from('influenceurs').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente'),
+    supabase.from('influenceurs').select('*', { count: 'exact', head: true }).eq('statut', 'valide'),
+    supabase.from('influenceurs').select('*', { count: 'exact', head: true }).eq('statut', 'refuse'),
+    supabase.from('candidatures').select('*', { count: 'exact', head: true }),
+    supabase.from('candidatures').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente'),
+    supabase.from('candidatures').select('*', { count: 'exact', head: true }).eq('post_publie', true),
+    supabase.from('restaurants').select('*', { count: 'exact', head: true }),
+    supabase.from('offres').select('*', { count: 'exact', head: true }),
+  ])
 
-  const inscriptions_semaine = db.prepare(`
-    SELECT date(date_inscription) as jour, COUNT(*) as nb
-    FROM influenceurs
-    WHERE date_inscription >= datetime('now', '-7 days')
-    GROUP BY jour ORDER BY jour
-  `).all()
+  const { data: inscriptions_semaine } = await supabase
+    .from('influenceurs')
+    .select('date_inscription')
+    .gte('date_inscription', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
 
   res.json({
     influenceurs: { total: total_influenceurs, en_attente, valides, refuses },
     candidatures: { total: total_candidatures, en_attente: candidatures_en_attente, posts_publies },
     restaurants: { total: total_restaurants },
-    inscriptions_semaine
+    offres: { total: total_offres },
+    inscriptions_semaine: inscriptions_semaine || [],
   })
 })
 
 // Liste des influenceurs
-app.get('/admin/influenceurs', adminAuth, (req, res) => {
-  const influenceurs = db.prepare(
-    'SELECT id, nom, email, reseau, abonnes, statut, date_inscription FROM influenceurs ORDER BY date_inscription DESC'
-  ).all()
-  res.json(influenceurs)
+app.get('/admin/influenceurs', adminAuth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('influenceurs')
+    .select('id, nom, email, reseau, abonnes, statut, date_inscription')
+    .order('date_inscription', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
 })
 
 // Valider ou refuser un influenceur
-app.put('/admin/influenceurs/:id', adminAuth, (req, res) => {
+app.put('/admin/influenceurs/:id', adminAuth, async (req, res) => {
   const { statut } = req.body
   if (!['valide', 'refuse', 'en_attente'].includes(statut)) {
     return res.status(400).json({ error: 'Statut invalide' })
   }
-  db.prepare('UPDATE influenceurs SET statut = ? WHERE id = ?').run(statut, req.params.id)
+  const { error } = await supabase.from('influenceurs').update({ statut }).eq('id', req.params.id)
+  if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true })
 })
 
 // Liste des candidatures avec détails
-app.get('/admin/candidatures', adminAuth, (req, res) => {
-  const candidatures = db.prepare(`
-    SELECT c.id, c.statut, c.post_publie, c.date_candidature,
-           i.nom as influenceur_nom, i.reseau, i.abonnes,
-           r.nom as restaurant_nom
-    FROM candidatures c
-    JOIN influenceurs i ON c.influenceur_id = i.id
-    JOIN restaurants r ON c.restaurant_id = r.id
-    ORDER BY c.date_candidature DESC
-  `).all()
-  res.json(candidatures)
+app.get('/admin/candidatures', adminAuth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('candidatures')
+    .select(`
+      id, statut, post_publie, lien_publication, date_candidature,
+      influenceurs (nom, reseau, abonnes),
+      offres (titre, contrepartie),
+      restaurants (nom)
+    `)
+    .order('date_candidature', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
 })
 
 // Valider/refuser une candidature ou marquer le post comme publié
-app.put('/admin/candidatures/:id', adminAuth, (req, res) => {
+app.put('/admin/candidatures/:id', adminAuth, async (req, res) => {
   const { statut, post_publie } = req.body
+  const updates = {}
   if (statut !== undefined) {
     if (!['en_attente', 'valide', 'refuse'].includes(statut)) {
       return res.status(400).json({ error: 'Statut invalide' })
     }
-    db.prepare('UPDATE candidatures SET statut = ? WHERE id = ?').run(statut, req.params.id)
+    updates.statut = statut
   }
-  if (post_publie !== undefined) {
-    db.prepare('UPDATE candidatures SET post_publie = ? WHERE id = ?').run(post_publie ? 1 : 0, req.params.id)
-  }
+  if (post_publie !== undefined) updates.post_publie = post_publie
+  const { error } = await supabase.from('candidatures').update(updates).eq('id', req.params.id)
+  if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true })
 })
 
-// Ajouter un restaurant (admin)
-app.post('/admin/restaurants', adminAuth, (req, res) => {
+// ─── ROUTES RESTAURANTS ───────────────────────────────────────────────────────
+
+// Ajouter un restaurant
+app.post('/admin/restaurants', adminAuth, async (req, res) => {
   const { nom, adresse, description, telephone, email, statut, info } = req.body
   if (!nom || !adresse) return res.status(400).json({ error: 'Nom et adresse requis' })
-  const result = db.prepare(
-    'INSERT INTO restaurants (nom, adresse, description, telephone, email, statut, info) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(nom, adresse, description || '', telephone || '', email || '', statut || 'Ouvert', info || '')
-  res.json({ id: result.lastInsertRowid, message: 'Restaurant ajouté' })
+  const { data, error } = await supabase
+    .from('restaurants')
+    .insert({ nom, adresse, description, telephone, email, statut: statut || 'Ouvert', info })
+    .select('id')
+    .single()
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ id: data.id, message: 'Restaurant ajouté' })
 })
 
-// Modifier un restaurant (admin)
-app.put('/admin/restaurants/:id', adminAuth, (req, res) => {
+// Modifier un restaurant
+app.put('/admin/restaurants/:id', adminAuth, async (req, res) => {
   const { nom, adresse, description, telephone, statut, info } = req.body
-  db.prepare(
-    'UPDATE restaurants SET nom=?, adresse=?, description=?, telephone=?, statut=?, info=? WHERE id=?'
-  ).run(nom, adresse, description, telephone, statut, info, req.params.id)
+  const { error } = await supabase
+    .from('restaurants')
+    .update({ nom, adresse, description, telephone, statut, info })
+    .eq('id', req.params.id)
+  if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true })
 })
 
-// Supprimer un restaurant (admin)
-app.delete('/admin/restaurants/:id', adminAuth, (req, res) => {
-  db.prepare('DELETE FROM restaurants WHERE id = ?').run(req.params.id)
+// Supprimer un restaurant
+app.delete('/admin/restaurants/:id', adminAuth, async (req, res) => {
+  const { error } = await supabase.from('restaurants').delete().eq('id', req.params.id)
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ success: true })
+})
+
+// ─── ROUTES OFFRES ────────────────────────────────────────────────────────────
+
+// Toutes les offres (admin)
+app.get('/admin/offres', adminAuth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('offres')
+    .select('*, restaurants (nom)')
+    .order('date_creation', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
+})
+
+// Créer une offre
+app.post('/admin/offres', adminAuth, async (req, res) => {
+  const { restaurant_id, titre, description, menu, valeur_indicative, contrepartie, nombre_places, tranche_min, tranche_max, conditions } = req.body
+  if (!restaurant_id || !titre || !contrepartie || !nombre_places) {
+    return res.status(400).json({ error: 'Champs obligatoires manquants' })
+  }
+  const { data, error } = await supabase
+    .from('offres')
+    .insert({
+      restaurant_id, titre, description, menu, valeur_indicative,
+      contrepartie, nombre_places, places_restantes: nombre_places,
+      tranche_min: tranche_min || 1000, tranche_max, conditions
+    })
+    .select('id')
+    .single()
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ id: data.id, message: 'Offre créée' })
+})
+
+// Modifier une offre
+app.put('/admin/offres/:id', adminAuth, async (req, res) => {
+  const { titre, description, menu, valeur_indicative, contrepartie, nombre_places, tranche_min, tranche_max, statut, conditions } = req.body
+  const { error } = await supabase
+    .from('offres')
+    .update({ titre, description, menu, valeur_indicative, contrepartie, nombre_places, tranche_min, tranche_max, statut, conditions })
+    .eq('id', req.params.id)
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ success: true })
+})
+
+// Supprimer une offre
+app.delete('/admin/offres/:id', adminAuth, async (req, res) => {
+  const { error } = await supabase.from('offres').delete().eq('id', req.params.id)
+  if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true })
 })
 
