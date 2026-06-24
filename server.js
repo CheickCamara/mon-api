@@ -15,6 +15,12 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 )
 
+// Client avec service_role pour les uploads Storage (bypass RLS)
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY
+)
+
 const app = express()
 const PORT = 3001
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
@@ -386,14 +392,14 @@ app.post('/restaurateur/mon-restaurant/photo', userAuth, upload.single('photo'),
   if (!req.file) return res.status(400).json({ error: 'Aucun fichier reçu' })
 
   const ext = req.file.mimetype === 'image/png' ? 'png' : req.file.mimetype === 'image/webp' ? 'webp' : 'jpg'
-  const path = `restaurants/${req.user.restaurant_id}_${Date.now()}.${ext}`
+  const filePath = `restaurants/${req.user.restaurant_id}_${Date.now()}.${ext}`
 
-  const { error: uploadError } = await supabase.storage.from('Publications').upload(path, req.file.buffer, {
+  const { error: uploadError } = await supabaseAdmin.storage.from('Publications').upload(filePath, req.file.buffer, {
     contentType: req.file.mimetype, upsert: true,
   })
-  if (uploadError) return res.status(500).json({ error: uploadError.message })
+  if (uploadError) { console.error('Storage upload error:', uploadError); return res.status(500).json({ error: uploadError.message }) }
 
-  const { data: { publicUrl } } = supabase.storage.from('Publications').getPublicUrl(path)
+  const { data: { publicUrl } } = supabaseAdmin.storage.from('Publications').getPublicUrl(filePath)
   const { error } = await supabase.from('restaurants').update({ image: publicUrl }).eq('id', req.user.restaurant_id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ url: publicUrl })
@@ -467,13 +473,13 @@ app.post('/mon-espace/candidatures/:id/upload-story', userAuth, upload.single('f
   const ext = originalname.split('.').pop() || 'jpg'
   const fileName = `story_${req.params.id}_${Date.now()}.${ext}`
 
-  const { error } = await supabase.storage
+  const { error } = await supabaseAdmin.storage
     .from('Publications')
     .upload(fileName, buffer, { contentType: mimetype, upsert: true })
 
   if (error) return res.status(500).json({ error: error.message })
 
-  const { data: urlData } = supabase.storage.from('Publications').getPublicUrl(fileName)
+  const { data: urlData } = supabaseAdmin.storage.from('Publications').getPublicUrl(fileName)
   res.json({ url: urlData.publicUrl })
 })
 
