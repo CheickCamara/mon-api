@@ -414,7 +414,7 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
   // Vérifier que la candidature appartient bien à ce restaurant
   const { data: cand } = await supabase
     .from('candidatures')
-    .select('id, offre_id, restaurant_id, influenceurs (nom, email), offres (titre, restaurants (nom))')
+    .select('id, offre_id, restaurant_id, statut, influenceurs (nom, email), offres (titre, restaurants (nom))')
     .eq('id', req.params.id)
     .single()
 
@@ -424,8 +424,8 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
   const { error } = await supabase.from('candidatures').update({ statut }).eq('id', req.params.id)
   if (error) return res.status(500).json({ error: error.message })
 
-  // Décrémenter places_restantes quand on valide
-  if (statut === 'valide' && cand.offre_id) {
+  // Décrémenter uniquement si on passe à valide depuis un autre statut
+  if (statut === 'valide' && cand.statut !== 'valide' && cand.offre_id) {
     await supabase.rpc('decrement_places', { p_offre_id: cand.offre_id })
   }
 
@@ -1007,8 +1007,15 @@ app.put('/admin/candidatures/:id', adminAuth, async (req, res) => {
     updates.statut = statut
   }
   if (post_publie !== undefined) updates.post_publie = post_publie
+
+  const { data: candAvant } = await supabase.from('candidatures').select('statut, offre_id').eq('id', req.params.id).single()
   const { error } = await supabase.from('candidatures').update(updates).eq('id', req.params.id)
   if (error) return res.status(500).json({ error: error.message })
+
+  // Décrémenter places_restantes uniquement si on passe à valide depuis un autre statut
+  if (statut === 'valide' && candAvant?.statut !== 'valide' && candAvant?.offre_id) {
+    await supabase.rpc('decrement_places', { p_offre_id: candAvant.offre_id })
+  }
 
   // Notifier l'influenceur si la candidature est validée ou refusée
   if (statut === 'valide' || statut === 'refuse') {
