@@ -351,7 +351,7 @@ app.get('/restaurateur/candidatures', userAuth, async (req, res) => {
   const { data, error } = await supabase
     .from('candidatures')
     .select(`
-      id, statut, date_candidature, post_publie, lien_publication, capture_story,
+      id, statut, date_candidature, post_publie, lien_publication, capture_story, influenceur_id,
       influenceurs (nom, email, reseau, abonnes, pseudo),
       offres (titre, contrepartie)
     `)
@@ -543,6 +543,19 @@ app.get('/mon-espace/avis-recus', userAuth, async (req, res) => {
   const notes = data.map(a => a.note)
   const moyenne = notes.length ? (notes.reduce((a, b) => a + b, 0) / notes.length).toFixed(1) : null
   res.json({ moyenne, total: notes.length, avis: data })
+})
+
+// Note moyenne d'un influenceur (accessible aux restaurateurs)
+app.get('/influenceurs/:id/avis', userAuth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('avis')
+    .select('note, candidatures!inner(influenceur_id)')
+    .eq('auteur_role', 'restaurateur')
+    .eq('candidatures.influenceur_id', req.params.id)
+  if (error) return res.status(500).json({ error: error.message })
+  const notes = data.map(a => a.note)
+  const moyenne = notes.length ? (notes.reduce((a, b) => a + b, 0) / notes.length).toFixed(1) : null
+  res.json({ moyenne, total: notes.length })
 })
 
 // Vérifier si l'utilisateur a déjà laissé un avis pour une candidature
