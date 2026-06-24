@@ -112,6 +112,20 @@ app.get('/restaurants/:id', async (req, res) => {
   res.json(data)
 })
 
+// Profil public d'un restaurant (offres actives + avis)
+app.get('/restaurants/:id/profil-public', async (req, res) => {
+  const id = req.params.id
+  const [{ data: resto }, { data: offres }, avisRes] = await Promise.all([
+    supabase.from('restaurants').select('id, nom, adresse, description, telephone, image').eq('id', id).single(),
+    supabase.from('offres').select('id, titre, description, contrepartie, valeur_indicative, places_restantes, tranche_min, tranche_max, conditions').eq('restaurant_id', id).eq('statut', 'active').gt('places_restantes', 0),
+    supabase.from('avis').select('note, commentaire, created_at, candidatures!inner(restaurant_id)').eq('auteur_role', 'influenceur').eq('candidatures.restaurant_id', id).order('created_at', { ascending: false }).limit(10),
+  ])
+  if (!resto) return res.status(404).json({ error: 'Restaurant introuvable' })
+  const notes = (avisRes.data ?? []).map(a => a.note)
+  const moyenne = notes.length ? (notes.reduce((a, b) => a + b, 0) / notes.length).toFixed(1) : null
+  res.json({ resto, offres: offres ?? [], avis: avisRes.data ?? [], moyenne, total_avis: notes.length })
+})
+
 // Toutes les offres actives (avec infos du restaurant)
 app.get('/offres', async (req, res) => {
   const { data, error } = await supabase
@@ -317,6 +331,19 @@ app.get('/mon-espace/candidatures', userAuth, async (req, res) => {
     .order('date_candidature', { ascending: false })
   if (error) return res.status(500).json({ error: error.message })
   res.json(data)
+})
+
+// Notifications non vues (candidatures valide/refuse depuis la dernière visite)
+app.get('/mon-espace/notifications', userAuth, async (req, res) => {
+  const depuis = req.query.depuis // timestamp ISO passé par le frontend
+  let query = supabase
+    .from('candidatures')
+    .select('id, statut, offres(titre, restaurants(nom))', { count: 'exact' })
+    .eq('influenceur_id', req.user.id)
+    .in('statut', ['valide', 'refuse', 'honoree'])
+  if (depuis) query = query.gt('updated_at', depuis)
+  const { data, count } = await query.order('updated_at', { ascending: false }).limit(10)
+  res.json({ count: count ?? 0, items: data ?? [] })
 })
 
 // ─── ESPACE RESTAURATEUR ──────────────────────────────────────────────────────
