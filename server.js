@@ -600,8 +600,8 @@ app.get('/admin/candidatures', adminAuth, async (req, res) => {
   const { data, error } = await supabase
     .from('candidatures')
     .select(`
-      id, statut, post_publie, lien_publication, date_candidature,
-      influenceurs (nom, reseau, abonnes),
+      id, statut, post_publie, lien_publication, capture_story, date_candidature,
+      influenceurs (nom, reseau, abonnes, email),
       offres (titre, contrepartie),
       restaurants (nom)
     `)
