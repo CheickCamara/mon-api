@@ -18,6 +18,18 @@ const supabase = createClient(
 const app = express()
 const PORT = 3001
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
+
+async function geocodeAdresse(adresse) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(adresse)}&limit=1`
+    const res = await fetch(url, { headers: { 'User-Agent': 'PopFluence/1.0 (camaracheick1998@gmail.com)' } })
+    const data = await res.json()
+    if (data && data.length > 0) {
+      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
+    }
+  } catch { /* géocodage optionnel, échec silencieux */ }
+  return { lat: null, lng: null }
+}
 const JWT_SECRET = process.env.JWT_SECRET
 
 app.use(cors())
@@ -642,9 +654,11 @@ app.post('/auth/inscription-restaurateur', async (req, res) => {
 
   const hash = await bcrypt.hash(mot_de_passe, 10)
 
+  const coords = await geocodeAdresse(adresse)
+
   const { data: resto, error: restoError } = await supabase
     .from('restaurants')
-    .insert({ nom: nom_etablissement, adresse, email, statut: 'en_attente', siret: siretNettoyé, telephone: telephone || null, description: description || null })
+    .insert({ nom: nom_etablissement, adresse, email, statut: 'en_attente', siret: siretNettoyé, telephone: telephone || null, description: description || null, lat: coords.lat, lng: coords.lng })
     .select('id')
     .single()
   if (restoError) return res.status(500).json({ error: restoError.message })
@@ -978,8 +992,20 @@ app.post('/admin/restaurants', adminAuth, async (req, res) => {
 app.put('/admin/restaurants/:id', adminAuth, async (req, res) => {
   const { nom, adresse, description, telephone, statut, info } = req.body
 
-  const { data: resto } = await supabase.from('restaurants').select('nom, statut, email').eq('id', req.params.id).single()
-  const { error } = await supabase.from('restaurants').update({ nom, adresse, description, telephone, statut, info }).eq('id', req.params.id)
+  const { data: resto } = await supabase.from('restaurants').select('nom, statut, email, adresse, lat, lng').eq('id', req.params.id).single()
+
+  const updates = { nom, adresse, description, telephone, statut, info }
+  if (adresse && adresse !== resto?.adresse) {
+    const coords = await geocodeAdresse(adresse)
+    updates.lat = coords.lat
+    updates.lng = coords.lng
+  } else if (!resto?.lat) {
+    const coords = await geocodeAdresse(adresse || resto?.adresse)
+    updates.lat = coords.lat
+    updates.lng = coords.lng
+  }
+
+  const { error } = await supabase.from('restaurants').update(updates).eq('id', req.params.id)
   if (error) return res.status(500).json({ error: error.message })
 
   // Email de bienvenue quand le restaurant passe de en_attente à valide
