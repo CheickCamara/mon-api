@@ -394,6 +394,26 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
   res.json({ success: true })
 })
 
+// Créer une offre (restaurateur)
+app.post('/restaurateur/offres', userAuth, async (req, res) => {
+  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
+  const { titre, description, menu, valeur_indicative, contrepartie, nombre_places, tranche_min, tranche_max, conditions } = req.body
+  if (!titre || !contrepartie || !nombre_places) return res.status(400).json({ error: 'Champs obligatoires manquants' })
+  const { data, error } = await supabase
+    .from('offres')
+    .insert({
+      restaurant_id: req.user.restaurant_id,
+      titre, description, menu, valeur_indicative,
+      contrepartie, nombre_places, places_restantes: nombre_places,
+      tranche_min: tranche_min || 1000, tranche_max, conditions,
+      statut: 'en_attente_validation',
+    })
+    .select('id')
+    .single()
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ id: data.id, message: 'Offre soumise pour validation' })
+})
+
 // ─── AUTHENTIFICATION ─────────────────────────────────────────────────────────
 
 // Inscription influenceur
