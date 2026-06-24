@@ -532,6 +532,32 @@ app.post('/messages/:candidature_id', userAuth, async (req, res) => {
   res.json(data)
 })
 
+// Nombre de messages non lus pour une candidature
+app.get('/messages/:candidature_id/non-lus', userAuth, async (req, res) => {
+  const candId = Number(req.params.candidature_id)
+  const { data: cand } = await supabase.from('candidatures').select('influenceur_id, restaurant_id').eq('id', candId).single()
+  if (!cand) return res.status(404).json({ error: 'Introuvable' })
+  const ok = req.user.role === 'influenceur' ? cand.influenceur_id === req.user.id : cand.restaurant_id === req.user.restaurant_id
+  if (!ok) return res.status(403).json({ error: 'Accès refusé' })
+
+  const monRole = req.user.role
+  const { count } = await supabase.from('messages').select('*', { count: 'exact', head: true })
+    .eq('candidature_id', candId).eq('lu', false).neq('expediteur', monRole)
+  res.json({ non_lus: count ?? 0 })
+})
+
+// Marquer les messages comme lus
+app.put('/messages/:candidature_id/lus', userAuth, async (req, res) => {
+  const candId = Number(req.params.candidature_id)
+  const { data: cand } = await supabase.from('candidatures').select('influenceur_id, restaurant_id').eq('id', candId).single()
+  if (!cand) return res.status(404).json({ error: 'Introuvable' })
+  const ok = req.user.role === 'influenceur' ? cand.influenceur_id === req.user.id : cand.restaurant_id === req.user.restaurant_id
+  if (!ok) return res.status(403).json({ error: 'Accès refusé' })
+
+  await supabase.from('messages').update({ lu: true }).eq('candidature_id', candId).neq('expediteur', req.user.role)
+  res.json({ success: true })
+})
+
 // Créer une offre (restaurateur)
 app.post('/restaurateur/offres', userAuth, async (req, res) => {
   if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
