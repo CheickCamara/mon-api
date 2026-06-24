@@ -241,7 +241,7 @@ app.get('/mon-espace/candidatures', userAuth, async (req, res) => {
   const { data, error } = await supabase
     .from('candidatures')
     .select(`
-      id, statut, date_candidature,
+      id, statut, date_candidature, lien_publication, post_publie,
       offres (titre, contrepartie, valeur_indicative, restaurants (nom, adresse))
     `)
     .eq('influenceur_id', req.user.id)
@@ -290,6 +290,31 @@ app.get('/restaurateur/candidatures', userAuth, async (req, res) => {
     .order('date_candidature', { ascending: false })
   if (error) return res.status(500).json({ error: error.message })
   res.json(data)
+})
+
+// Soumettre la preuve de publication
+app.put('/mon-espace/candidatures/:id/publication', userAuth, async (req, res) => {
+  const { lien_publication } = req.body
+  if (!lien_publication) return res.status(400).json({ error: 'Lien de publication requis' })
+
+  // Vérifier que la candidature appartient bien à cet influenceur et qu'elle est validée
+  const { data: cand } = await supabase
+    .from('candidatures')
+    .select('id, statut, influenceur_id')
+    .eq('id', req.params.id)
+    .single()
+
+  if (!cand) return res.status(404).json({ error: 'Candidature introuvable' })
+  if (cand.influenceur_id !== req.user.id) return res.status(403).json({ error: 'Accès refusé' })
+  if (cand.statut !== 'valide') return res.status(400).json({ error: 'Ta candidature doit être acceptée avant de soumettre une publication' })
+
+  const { error } = await supabase
+    .from('candidatures')
+    .update({ lien_publication, post_publie: true })
+    .eq('id', req.params.id)
+
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ message: 'Publication enregistrée, merci !' })
 })
 
 // ─── AUTHENTIFICATION ─────────────────────────────────────────────────────────
