@@ -244,6 +244,33 @@ app.post('/candidatures', userAuth, async (req, res) => {
     }).catch(() => {})
   }
 
+  // Confirmer la candidature à l'influenceur
+  const { data: influenceurData } = await supabase
+    .from('influenceurs')
+    .select('nom, email')
+    .eq('id', influenceur_id)
+    .single()
+
+  if (influenceurData?.email && resend) {
+    await resend.emails.send({
+      from: 'Pop Fluence <onboarding@resend.dev>',
+      to: influenceurData.email,
+      subject: '📩 Ta candidature a bien été envoyée !',
+      html: `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+          <h2 style="color:#7c3aed;">📩 Candidature reçue !</h2>
+          <p>Bonjour ${influenceurData.nom},</p>
+          <p>Ta candidature pour l'offre <strong>${offreDetails?.titre ?? ''}</strong> a bien été envoyée au restaurant.</p>
+          <p>Le restaurant a <strong>48h</strong> pour consulter ton profil et te répondre. Tu recevras un email dès qu'une décision est prise.</p>
+          <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+            Voir mes candidatures
+          </a>
+          <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
+        </div>
+      `,
+    }).catch(() => {})
+  }
+
   res.json({ id: data.id, message: 'Candidature envoyée' })
 })
 
