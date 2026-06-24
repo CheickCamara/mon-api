@@ -213,6 +213,48 @@ app.get('/mon-espace/candidatures', userAuth, async (req, res) => {
   res.json(data)
 })
 
+// ─── ESPACE RESTAURATEUR ──────────────────────────────────────────────────────
+
+// Mon restaurant
+app.get('/restaurateur/mon-restaurant', userAuth, async (req, res) => {
+  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
+  const { data, error } = await supabase
+    .from('restaurants')
+    .select('id, nom, adresse, description, telephone, statut, image, siret')
+    .eq('id', req.user.restaurant_id)
+    .single()
+  if (error || !data) return res.status(404).json({ error: 'Restaurant introuvable' })
+  res.json(data)
+})
+
+// Mes offres
+app.get('/restaurateur/mes-offres', userAuth, async (req, res) => {
+  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
+  const { data, error } = await supabase
+    .from('offres')
+    .select('id, titre, contrepartie, nombre_places, places_restantes, valeur_indicative, statut, tranche_min, tranche_max')
+    .eq('restaurant_id', req.user.restaurant_id)
+    .order('id', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
+})
+
+// Candidatures reçues pour mon restaurant
+app.get('/restaurateur/candidatures', userAuth, async (req, res) => {
+  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
+  const { data, error } = await supabase
+    .from('candidatures')
+    .select(`
+      id, statut, date_candidature, post_publie,
+      influenceurs (nom, email, reseau, abonnes),
+      offres (titre, contrepartie)
+    `)
+    .eq('restaurant_id', req.user.restaurant_id)
+    .order('date_candidature', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
+})
+
 // ─── AUTHENTIFICATION ─────────────────────────────────────────────────────────
 
 // Inscription influenceur
