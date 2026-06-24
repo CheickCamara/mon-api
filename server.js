@@ -487,6 +487,75 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
   res.json({ success: true })
 })
 
+// ─── AVIS / NOTATION ──────────────────────────────────────────────────────────
+
+// Soumettre un avis (influenceur ou restaurateur)
+app.post('/avis', userAuth, async (req, res) => {
+  const { candidature_id, note, commentaire } = req.body
+  if (!candidature_id || !note) return res.status(400).json({ error: 'candidature_id et note requis' })
+  if (note < 1 || note > 5) return res.status(400).json({ error: 'La note doit être entre 1 et 5' })
+
+  const auteur_role = req.user.role
+
+  // Vérifier que la candidature est honorée et appartient bien à cet utilisateur
+  const { data: cand } = await supabase
+    .from('candidatures')
+    .select('id, statut, influenceur_id, restaurant_id')
+    .eq('id', candidature_id)
+    .single()
+
+  if (!cand) return res.status(404).json({ error: 'Candidature introuvable' })
+  if (cand.statut !== 'honoree') return res.status(400).json({ error: 'La collaboration doit être honorée pour laisser un avis' })
+  if (auteur_role === 'influenceur' && cand.influenceur_id !== req.user.id) return res.status(403).json({ error: 'Non autorisé' })
+  if (auteur_role === 'restaurateur' && cand.restaurant_id !== req.user.restaurant_id) return res.status(403).json({ error: 'Non autorisé' })
+
+  const { error } = await supabase.from('avis').insert({ candidature_id, auteur_role, note, commentaire: commentaire || null })
+  if (error) {
+    if (error.code === '23505') return res.status(409).json({ error: 'Tu as déjà laissé un avis pour cette collaboration' })
+    return res.status(500).json({ error: error.message })
+  }
+  res.json({ message: 'Avis enregistré' })
+})
+
+// Récupérer les avis reçus par un restaurant
+app.get('/restaurants/:id/avis', async (req, res) => {
+  const { data, error } = await supabase
+    .from('avis')
+    .select('note, commentaire, created_at, candidatures!inner(restaurant_id)')
+    .eq('auteur_role', 'influenceur')
+    .eq('candidatures.restaurant_id', req.params.id)
+    .order('created_at', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  const notes = data.map(a => a.note)
+  const moyenne = notes.length ? (notes.reduce((a, b) => a + b, 0) / notes.length).toFixed(1) : null
+  res.json({ moyenne, total: notes.length, avis: data })
+})
+
+// Récupérer les avis reçus par un influenceur
+app.get('/mon-espace/avis-recus', userAuth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('avis')
+    .select('note, commentaire, created_at, candidatures!inner(influenceur_id)')
+    .eq('auteur_role', 'restaurateur')
+    .eq('candidatures.influenceur_id', req.user.id)
+    .order('created_at', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  const notes = data.map(a => a.note)
+  const moyenne = notes.length ? (notes.reduce((a, b) => a + b, 0) / notes.length).toFixed(1) : null
+  res.json({ moyenne, total: notes.length, avis: data })
+})
+
+// Vérifier si l'utilisateur a déjà laissé un avis pour une candidature
+app.get('/avis/:candidature_id', userAuth, async (req, res) => {
+  const { data } = await supabase
+    .from('avis')
+    .select('id, note, commentaire')
+    .eq('candidature_id', req.params.candidature_id)
+    .eq('auteur_role', req.user.role)
+    .single()
+  res.json(data ?? null)
+})
+
 // ─── MESSAGERIE ───────────────────────────────────────────────────────────────
 
 // Récupérer les messages d'une candidature
