@@ -662,10 +662,10 @@ app.post('/admin/offres', adminAuth, async (req, res) => {
 
 // Modifier une offre
 app.put('/admin/offres/:id', adminAuth, async (req, res) => {
-  const { titre, description, menu, valeur_indicative, contrepartie, nombre_places, tranche_min, tranche_max, statut, conditions } = req.body
+  const { restaurant_id, titre, description, menu, valeur_indicative, contrepartie, nombre_places, tranche_min, tranche_max, statut, conditions } = req.body
   const { error } = await supabase
     .from('offres')
-    .update({ titre, description, menu, valeur_indicative, contrepartie, nombre_places, tranche_min, tranche_max, statut, conditions })
+    .update({ restaurant_id, titre, description, menu, valeur_indicative, contrepartie, nombre_places, tranche_min, tranche_max, statut, conditions })
     .eq('id', req.params.id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true })
