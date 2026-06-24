@@ -317,7 +317,7 @@ app.put('/mon-espace/candidatures/:id/publication', userAuth, async (req, res) =
 })
 
 // Upload capture story vers Supabase Storage
-app.post('/mon-espace/candidatures/:id/upload-story', userAuth, async (req, res) => {
+app.post('/mon-espace/candidatures/:id/upload-story', userAuth, express.raw({ type: '*/*', limit: '10mb' }), async (req, res) => {
   const { data: cand } = await supabase
     .from('candidatures')
     .select('id, statut, influenceur_id')
@@ -327,23 +327,19 @@ app.post('/mon-espace/candidatures/:id/upload-story', userAuth, async (req, res)
   if (!cand) return res.status(404).json({ error: 'Candidature introuvable' })
   if (cand.influenceur_id !== req.user.id) return res.status(403).json({ error: 'Accès refusé' })
 
-  const chunks = []
-  req.on('data', chunk => chunks.push(chunk))
-  req.on('end', async () => {
-    const buffer = Buffer.concat(chunks)
-    const contentType = req.headers['content-type'] || 'image/jpeg'
-    const ext = contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'jpg'
-    const fileName = `story_${req.params.id}_${Date.now()}.${ext}`
+  const buffer = req.body
+  const contentType = req.headers['content-type'] || 'image/jpeg'
+  const ext = contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'jpg'
+  const fileName = `story_${req.params.id}_${Date.now()}.${ext}`
 
-    const { error } = await supabase.storage
-      .from('publications')
-      .upload(fileName, buffer, { contentType, upsert: true })
+  const { error } = await supabase.storage
+    .from('publications')
+    .upload(fileName, buffer, { contentType, upsert: true })
 
-    if (error) return res.status(500).json({ error: error.message })
+  if (error) return res.status(500).json({ error: error.message })
 
-    const { data: urlData } = supabase.storage.from('publications').getPublicUrl(fileName)
-    res.json({ url: urlData.publicUrl })
-  })
+  const { data: urlData } = supabase.storage.from('publications').getPublicUrl(fileName)
+  res.json({ url: urlData.publicUrl })
 })
 
 // ─── AUTHENTIFICATION ─────────────────────────────────────────────────────────
