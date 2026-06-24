@@ -335,12 +335,12 @@ app.post('/mon-espace/candidatures/:id/upload-story', userAuth, upload.single('f
   const fileName = `story_${req.params.id}_${Date.now()}.${ext}`
 
   const { error } = await supabase.storage
-    .from('publications')
+    .from('Publications')
     .upload(fileName, buffer, { contentType: mimetype, upsert: true })
 
   if (error) return res.status(500).json({ error: error.message })
 
-  const { data: urlData } = supabase.storage.from('publications').getPublicUrl(fileName)
+  const { data: urlData } = supabase.storage.from('Publications').getPublicUrl(fileName)
   res.json({ url: urlData.publicUrl })
 })
 
