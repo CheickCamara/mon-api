@@ -348,7 +348,7 @@ app.post('/mon-espace/candidatures/:id/upload-story', userAuth, upload.single('f
 app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
   if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
   const { statut } = req.body
-  if (!['valide', 'refuse'].includes(statut)) return res.status(400).json({ error: 'Statut invalide' })
+  if (!['valide', 'refuse', 'honoree'].includes(statut)) return res.status(400).json({ error: 'Statut invalide' })
 
   // Vérifier que la candidature appartient bien à ce restaurant
   const { data: cand } = await supabase
@@ -366,7 +366,7 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
   // Notifier l'influenceur par e-mail
   const influenceur = cand.influenceurs
   const offre = cand.offres
-  if (influenceur?.email && resend) {
+  if (influenceur?.email && resend && statut !== 'honoree') {
     const accepte = statut === 'valide'
     await resend.emails.send({
       from: 'Pop Fluence <onboarding@resend.dev>',
@@ -384,6 +384,27 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
           }
           <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
             Voir mes candidatures
+          </a>
+          <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
+        </div>
+      `,
+    }).catch(() => {})
+  }
+
+  // Email de confirmation "collaboration honorée"
+  if (statut === 'honoree' && influenceur?.email && resend) {
+    await resend.emails.send({
+      from: 'Pop Fluence <onboarding@resend.dev>',
+      to: influenceur.email,
+      subject: '🏆 Collaboration honorée — merci !',
+      html: `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+          <h2 style="color:#7c3aed;">🏆 Collaboration honorée !</h2>
+          <p>Bonjour ${influenceur.nom},</p>
+          <p>Le restaurant <strong>${offre?.restaurants?.nom ?? ''}</strong> a confirmé ta publication pour l'offre <strong>${offre?.titre ?? ''}</strong>.</p>
+          <p>Cette collaboration est désormais comptabilisée dans ton historique. Bravo ! 🎉</p>
+          <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+            Voir mon profil
           </a>
           <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
         </div>
