@@ -75,9 +75,7 @@ app.get('/restaurants', async (req, res) => {
 })
 
 // Géocode tous les restaurants sans coordonnées (à appeler une fois)
-app.post('/admin/geocode-restaurants', async (req, res) => {
-  const { secret } = req.body
-  if (secret !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Non autorisé' })
+app.post('/admin/geocode-restaurants', adminAuth, async (req, res) => {
 
   const { data: restos } = await supabase.from('restaurants').select('id, nom, adresse, lat').is('lat', null)
   if (!restos || restos.length === 0) return res.json({ message: 'Aucun restaurant à géocoder', count: 0 })
@@ -293,7 +291,7 @@ app.put('/mon-espace/profil', userAuth, async (req, res) => {
   if (abonnes) updates.abonnes = Number(abonnes)
   if (mot_de_passe) updates.mot_de_passe = await bcrypt.hash(mot_de_passe, 10)
   if (pseudo !== undefined && pseudo !== null) updates.pseudo = pseudo.replace(/^@/, '').trim()
-  console.log('PUT profil updates:', updates, 'user:', req.user.id)
+
   const { error } = await supabase.from('influenceurs').update(updates).eq('id', req.user.id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ message: 'Profil mis à jour' })
@@ -332,7 +330,7 @@ app.get('/restaurateur/mes-offres', userAuth, async (req, res) => {
   if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
   const { data, error } = await supabase
     .from('offres')
-    .select('id, titre, contrepartie, nombre_places, places_restantes, valeur_indicative, statut, tranche_min, tranche_max')
+    .select('id, titre, description, menu, conditions, contrepartie, nombre_places, places_restantes, valeur_indicative, statut, tranche_min, tranche_max')
     .eq('restaurant_id', req.user.restaurant_id)
     .order('id', { ascending: false })
   if (error) return res.status(500).json({ error: error.message })
