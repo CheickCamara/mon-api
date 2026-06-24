@@ -276,17 +276,24 @@ app.get('/admin/stats', adminAuth, async (req, res) => {
     supabase.from('offres').select('*', { count: 'exact', head: true }),
   ])
 
-  const { data: inscriptions_semaine } = await supabase
+  const { data: rawInscriptions } = await supabase
     .from('influenceurs')
     .select('date_inscription')
     .gte('date_inscription', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+
+  const parJour = {}
+  for (const row of rawInscriptions || []) {
+    const jour = (row.date_inscription || '').slice(0, 10)
+    if (jour) parJour[jour] = (parJour[jour] || 0) + 1
+  }
+  const inscriptions_semaine = Object.entries(parJour).map(([jour, nb]) => ({ jour, nb })).sort((a, b) => a.jour.localeCompare(b.jour))
 
   res.json({
     influenceurs: { total: total_influenceurs, en_attente, valides, refuses },
     candidatures: { total: total_candidatures, en_attente: candidatures_en_attente, posts_publies },
     restaurants: { total: total_restaurants },
     offres: { total: total_offres },
-    inscriptions_semaine: inscriptions_semaine || [],
+    inscriptions_semaine,
   })
 })
 
