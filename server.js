@@ -438,6 +438,10 @@ app.get('/restaurateur/candidatures', userAuth, async (req, res) => {
 app.put('/mon-espace/candidatures/:id/publication', userAuth, async (req, res) => {
   const { lien_publication, capture_story } = req.body
   if (!lien_publication && !capture_story) return res.status(400).json({ error: 'Lien ou capture requis' })
+  if (lien_publication) {
+    const lienValide = /instagram\.com|tiktok\.com/i.test(lien_publication)
+    if (!lienValide) return res.status(400).json({ error: 'Le lien doit provenir d\'Instagram (instagram.com) ou TikTok (tiktok.com).' })
+  }
 
   const { data: cand } = await supabase
     .from('candidatures')
