@@ -5,8 +5,10 @@ const jwt = require('jsonwebtoken')
 const bcrypt = require('bcryptjs')
 const { createClient } = require('@supabase/supabase-js')
 const { Resend } = require('resend')
+const multer = require('multer')
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -317,7 +319,7 @@ app.put('/mon-espace/candidatures/:id/publication', userAuth, async (req, res) =
 })
 
 // Upload capture story vers Supabase Storage
-app.post('/mon-espace/candidatures/:id/upload-story', userAuth, express.raw({ type: '*/*', limit: '10mb' }), async (req, res) => {
+app.post('/mon-espace/candidatures/:id/upload-story', userAuth, upload.single('fichier'), async (req, res) => {
   const { data: cand } = await supabase
     .from('candidatures')
     .select('id, statut, influenceur_id')
@@ -326,15 +328,15 @@ app.post('/mon-espace/candidatures/:id/upload-story', userAuth, express.raw({ ty
 
   if (!cand) return res.status(404).json({ error: 'Candidature introuvable' })
   if (cand.influenceur_id !== req.user.id) return res.status(403).json({ error: 'Accès refusé' })
+  if (!req.file) return res.status(400).json({ error: 'Aucun fichier reçu' })
 
-  const buffer = req.body
-  const contentType = req.headers['content-type'] || 'image/jpeg'
-  const ext = contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'jpg'
+  const { buffer, mimetype, originalname } = req.file
+  const ext = originalname.split('.').pop() || 'jpg'
   const fileName = `story_${req.params.id}_${Date.now()}.${ext}`
 
   const { error } = await supabase.storage
     .from('publications')
-    .upload(fileName, buffer, { contentType, upsert: true })
+    .upload(fileName, buffer, { contentType: mimetype, upsert: true })
 
   if (error) return res.status(500).json({ error: error.message })
 
