@@ -143,10 +143,13 @@ app.post('/candidatures', userAuth, async (req, res) => {
   // Vérifier l'éligibilité de l'influenceur
   const { data: influenceur } = await supabase
     .from('influenceurs')
-    .select('abonnes')
+    .select('abonnes, statut')
     .eq('id', influenceur_id)
     .single()
   if (!influenceur) return res.status(404).json({ error: 'Influenceur non trouvé' })
+  if (influenceur.statut !== 'valide') {
+    return res.status(403).json({ error: 'Ton compte doit être validé par notre équipe avant de pouvoir candidater' })
+  }
   if (influenceur.abonnes < offre.tranche_min) {
     return res.status(400).json({ error: `Minimum ${offre.tranche_min} abonnés requis pour cette offre` })
   }
