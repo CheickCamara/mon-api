@@ -394,6 +394,62 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
   res.json({ success: true })
 })
 
+// ─── MESSAGERIE ───────────────────────────────────────────────────────────────
+
+// Récupérer les messages d'une candidature
+app.get('/messages/:candidature_id', userAuth, async (req, res) => {
+  const candId = Number(req.params.candidature_id)
+
+  // Vérifier que l'utilisateur a accès à cette candidature
+  const { data: cand } = await supabase
+    .from('candidatures')
+    .select('influenceur_id, restaurant_id')
+    .eq('id', candId)
+    .single()
+  if (!cand) return res.status(404).json({ error: 'Candidature introuvable' })
+
+  const ok = req.user.role === 'influenceur'
+    ? cand.influenceur_id === req.user.id
+    : cand.restaurant_id === req.user.restaurant_id
+  if (!ok) return res.status(403).json({ error: 'Accès refusé' })
+
+  const { data, error } = await supabase
+    .from('messages')
+    .select('id, expediteur, contenu, date_envoi')
+    .eq('candidature_id', candId)
+    .order('date_envoi', { ascending: true })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
+})
+
+// Envoyer un message
+app.post('/messages/:candidature_id', userAuth, async (req, res) => {
+  const candId = Number(req.params.candidature_id)
+  const { contenu } = req.body
+  if (!contenu?.trim()) return res.status(400).json({ error: 'Message vide' })
+
+  // Vérifier accès
+  const { data: cand } = await supabase
+    .from('candidatures')
+    .select('influenceur_id, restaurant_id')
+    .eq('id', candId)
+    .single()
+  if (!cand) return res.status(404).json({ error: 'Candidature introuvable' })
+
+  const ok = req.user.role === 'influenceur'
+    ? cand.influenceur_id === req.user.id
+    : cand.restaurant_id === req.user.restaurant_id
+  if (!ok) return res.status(403).json({ error: 'Accès refusé' })
+
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({ candidature_id: candId, expediteur: req.user.role, contenu: contenu.trim() })
+    .select('id, expediteur, contenu, date_envoi')
+    .single()
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
+})
+
 // Créer une offre (restaurateur)
 app.post('/restaurateur/offres', userAuth, async (req, res) => {
   if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
