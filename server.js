@@ -74,6 +74,27 @@ app.get('/restaurants', async (req, res) => {
   res.json(data)
 })
 
+// Géocode tous les restaurants sans coordonnées (à appeler une fois)
+app.post('/admin/geocode-restaurants', async (req, res) => {
+  const { secret } = req.body
+  if (secret !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Non autorisé' })
+
+  const { data: restos } = await supabase.from('restaurants').select('id, nom, adresse, lat').is('lat', null)
+  if (!restos || restos.length === 0) return res.json({ message: 'Aucun restaurant à géocoder', count: 0 })
+
+  let count = 0
+  for (const r of restos) {
+    if (!r.adresse) continue
+    await new Promise(resolve => setTimeout(resolve, 1100)) // respect rate limit Nominatim
+    const coords = await geocodeAdresse(r.adresse)
+    if (coords.lat) {
+      await supabase.from('restaurants').update({ lat: coords.lat, lng: coords.lng }).eq('id', r.id)
+      count++
+    }
+  }
+  res.json({ message: `${count} restaurant(s) géocodés`, count })
+})
+
 // Un restaurant par id
 app.get('/restaurants/:id', async (req, res) => {
   const { data, error } = await supabase
