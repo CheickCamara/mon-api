@@ -84,6 +84,7 @@ app.get('/restaurants', async (req, res) => {
   const { data, error } = await supabase
     .from('restaurants')
     .select('id, nom, adresse, description, telephone, statut, info, lat, lng, image, siret')
+    .neq('statut', 'en_attente')
   if (error) return res.status(500).json({ error: error.message })
   res.json(data)
 })
@@ -122,11 +123,12 @@ app.get('/restaurants/:id', async (req, res) => {
 app.get('/restaurants/:id/profil-public', async (req, res) => {
   const id = req.params.id
   const [{ data: resto }, { data: offres }, avisRes] = await Promise.all([
-    supabase.from('restaurants').select('id, nom, adresse, description, telephone, image').eq('id', id).single(),
+    supabase.from('restaurants').select('id, nom, adresse, description, telephone, image, statut').eq('id', id).single(),
     supabase.from('offres').select('id, titre, description, contrepartie, valeur_indicative, places_restantes, tranche_min, tranche_max, conditions').eq('restaurant_id', id).eq('statut', 'active').gt('places_restantes', 0),
-    supabase.from('avis').select('note, commentaire, created_at, candidatures!inner(restaurant_id)').eq('auteur_role', 'influenceur').eq('candidatures.restaurant_id', id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('avis').select('note, commentaire, created_at, candidatures!inner(restaurant_id, influenceur_id, influenceurs(pseudo, nom))').eq('auteur_role', 'influenceur').eq('candidatures.restaurant_id', id).order('created_at', { ascending: false }).limit(10),
   ])
   if (!resto) return res.status(404).json({ error: 'Restaurant introuvable' })
+  if (resto.statut === 'en_attente') return res.status(403).json({ error: 'Ce restaurant n\'est pas encore validé' })
   const notes = (avisRes.data ?? []).map(a => a.note)
   const moyenne = notes.length ? (notes.reduce((a, b) => a + b, 0) / notes.length).toFixed(1) : null
   res.json({ resto, offres: offres ?? [], avis: avisRes.data ?? [], moyenne, total_avis: notes.length })
@@ -194,6 +196,14 @@ app.post('/candidatures', userAuth, async (req, res) => {
   const influenceur_id = req.user.id
   if (!offre_id) return res.status(400).json({ error: 'Champs manquants' })
   if (req.user.role !== 'influenceur') return res.status(403).json({ error: 'Seuls les influenceurs peuvent candidater' })
+
+  // Limiter à 5 candidatures en attente simultanées
+  const { count: enAttente } = await supabase
+    .from('candidatures')
+    .select('id', { count: 'exact', head: true })
+    .eq('influenceur_id', influenceur_id)
+    .eq('statut', 'en_attente')
+  if ((enAttente ?? 0) >= 5) return res.status(400).json({ error: 'Tu as déjà 5 candidatures en attente. Attends une réponse avant d\'en envoyer de nouvelles.' })
 
   // Vérifier que l'offre est active et a des places
   const { data: offre, error: offreError } = await supabase
@@ -330,7 +340,7 @@ app.get('/mon-espace/candidatures', userAuth, async (req, res) => {
   const { data, error } = await supabase
     .from('candidatures')
     .select(`
-      id, statut, date_candidature, lien_publication, post_publie, capture_story,
+      id, statut, offre_id, date_candidature, lien_publication, post_publie, capture_story,
       offres (titre, contrepartie, valeur_indicative, restaurants (nom, adresse))
     `)
     .eq('influenceur_id', req.user.id)
@@ -473,12 +483,13 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
   // Vérifier que la candidature appartient bien à ce restaurant
   const { data: cand } = await supabase
     .from('candidatures')
-    .select('id, offre_id, restaurant_id, statut, influenceurs (nom, email), offres (titre, restaurants (nom))')
+    .select('id, offre_id, restaurant_id, statut, post_publie, influenceurs (nom, email), offres (titre, restaurants (nom))')
     .eq('id', req.params.id)
     .single()
 
   if (!cand) return res.status(404).json({ error: 'Candidature introuvable' })
   if (cand.restaurant_id !== req.user.restaurant_id) return res.status(403).json({ error: 'Accès refusé' })
+  if (statut === 'honoree' && !cand.post_publie) return res.status(400).json({ error: 'L\'influenceur n\'a pas encore soumis sa publication.' })
 
   const { error } = await supabase.from('candidatures').update({ statut }).eq('id', req.params.id)
   if (error) return res.status(500).json({ error: error.message })
@@ -763,7 +774,7 @@ app.put('/messages/:candidature_id/lus', userAuth, async (req, res) => {
 app.post('/restaurateur/offres', userAuth, async (req, res) => {
   if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
   const { titre, description, menu, valeur_indicative, contrepartie, nombre_places, tranche_min, tranche_max, conditions } = req.body
-  if (!titre || !contrepartie || !nombre_places) return res.status(400).json({ error: 'Champs obligatoires manquants' })
+  if (!titre || !contrepartie || !nombre_places || nombre_places < 1) return res.status(400).json({ error: 'Champs obligatoires manquants (nombre de places minimum : 1)' })
   const { data, error } = await supabase
     .from('offres')
     .insert({
@@ -783,12 +794,14 @@ app.post('/restaurateur/offres', userAuth, async (req, res) => {
 app.put('/restaurateur/offres/:id', userAuth, async (req, res) => {
   if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
   const { titre, description, menu, valeur_indicative, contrepartie, nombre_places, tranche_min, tranche_max, conditions } = req.body
+  if (!nombre_places || nombre_places < 1) return res.status(400).json({ error: 'Le nombre de places doit être au moins 1' })
 
   const { data: offre } = await supabase.from('offres').select('restaurant_id, nombre_places, places_restantes').eq('id', req.params.id).single()
   if (!offre || offre.restaurant_id !== req.user.restaurant_id) return res.status(403).json({ error: 'Non autorisé' })
 
   const diff = nombre_places - offre.nombre_places
-  const nouveauxRestants = Math.max(0, offre.places_restantes + diff)
+  // Borner : ne jamais dépasser le nouveau total, ne jamais aller en dessous de 0
+  const nouveauxRestants = Math.min(nombre_places, Math.max(0, offre.places_restantes + diff))
 
   const { error } = await supabase.from('offres').update({
     titre, description, menu, valeur_indicative, contrepartie,
