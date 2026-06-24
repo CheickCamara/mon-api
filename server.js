@@ -360,6 +360,45 @@ app.get('/restaurateur/mon-restaurant', userAuth, async (req, res) => {
   res.json(data)
 })
 
+// Modifier les infos de mon restaurant
+app.put('/restaurateur/mon-restaurant', userAuth, async (req, res) => {
+  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
+  const { nom, description, telephone, adresse } = req.body
+  if (!nom || !adresse) return res.status(400).json({ error: 'Nom et adresse requis' })
+
+  const updates = { nom: nom.trim(), description: description?.trim() || null, telephone: telephone?.trim() || null, adresse: adresse.trim() }
+
+  // Regéocoder si l'adresse a changé
+  const { data: current } = await supabase.from('restaurants').select('adresse').eq('id', req.user.restaurant_id).single()
+  if (current && current.adresse !== adresse.trim()) {
+    const coords = await geocodeAdresse(adresse.trim())
+    if (coords) { updates.lat = coords.lat; updates.lng = coords.lng }
+  }
+
+  const { error } = await supabase.from('restaurants').update(updates).eq('id', req.user.restaurant_id)
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ success: true })
+})
+
+// Upload photo du restaurant
+app.post('/restaurateur/mon-restaurant/photo', userAuth, upload.single('photo'), async (req, res) => {
+  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
+  if (!req.file) return res.status(400).json({ error: 'Aucun fichier reçu' })
+
+  const ext = req.file.mimetype === 'image/png' ? 'png' : req.file.mimetype === 'image/webp' ? 'webp' : 'jpg'
+  const path = `restaurants/${req.user.restaurant_id}_${Date.now()}.${ext}`
+
+  const { error: uploadError } = await supabase.storage.from('Publications').upload(path, req.file.buffer, {
+    contentType: req.file.mimetype, upsert: true,
+  })
+  if (uploadError) return res.status(500).json({ error: uploadError.message })
+
+  const { data: { publicUrl } } = supabase.storage.from('Publications').getPublicUrl(path)
+  const { error } = await supabase.from('restaurants').update({ image: publicUrl }).eq('id', req.user.restaurant_id)
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ url: publicUrl })
+})
+
 // Mes offres
 app.get('/restaurateur/mes-offres', userAuth, async (req, res) => {
   if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
