@@ -361,7 +361,7 @@ app.get('/restaurateur/mon-restaurant', userAuth, async (req, res) => {
   if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
   const { data, error } = await supabase
     .from('restaurants')
-    .select('id, nom, adresse, description, telephone, statut, image, siret')
+    .select('id, nom, adresse, description, telephone, statut, image, siret, lat, lng')
     .eq('id', req.user.restaurant_id)
     .single()
   if (error || !data) return res.status(404).json({ error: 'Restaurant introuvable' })
