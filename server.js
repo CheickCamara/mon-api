@@ -52,7 +52,7 @@ function userAuth(req, res, next) {
 app.get('/restaurants', async (req, res) => {
   const { data, error } = await supabase
     .from('restaurants')
-    .select('id, nom, adresse, description, telephone, statut, info, lat, lng, image')
+    .select('id, nom, adresse, description, telephone, statut, info, lat, lng, image, siret')
   if (error) return res.status(500).json({ error: error.message })
   res.json(data)
 })
