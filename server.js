@@ -638,6 +638,37 @@ app.post('/restaurateur/offres', userAuth, async (req, res) => {
   res.json({ id: data.id, message: 'Offre soumise pour validation' })
 })
 
+// Modifier une offre (restaurateur propriétaire)
+app.put('/restaurateur/offres/:id', userAuth, async (req, res) => {
+  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
+  const { titre, description, menu, valeur_indicative, contrepartie, nombre_places, tranche_min, tranche_max, conditions } = req.body
+
+  const { data: offre } = await supabase.from('offres').select('restaurant_id, nombre_places, places_restantes').eq('id', req.params.id).single()
+  if (!offre || offre.restaurant_id !== req.user.restaurant_id) return res.status(403).json({ error: 'Non autorisé' })
+
+  const diff = nombre_places - offre.nombre_places
+  const nouveauxRestants = Math.max(0, offre.places_restantes + diff)
+
+  const { error } = await supabase.from('offres').update({
+    titre, description, menu, valeur_indicative, contrepartie,
+    nombre_places, places_restantes: nouveauxRestants,
+    tranche_min: tranche_min || 1000, tranche_max, conditions,
+    statut: 'en_attente_validation',
+  }).eq('id', req.params.id)
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ message: 'Offre mise à jour, en attente de revalidation' })
+})
+
+// Supprimer une offre (restaurateur propriétaire)
+app.delete('/restaurateur/offres/:id', userAuth, async (req, res) => {
+  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
+  const { data: offre } = await supabase.from('offres').select('restaurant_id').eq('id', req.params.id).single()
+  if (!offre || offre.restaurant_id !== req.user.restaurant_id) return res.status(403).json({ error: 'Non autorisé' })
+  const { error } = await supabase.from('offres').delete().eq('id', req.params.id)
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ message: 'Offre supprimée' })
+})
+
 // ─── AUTHENTIFICATION ─────────────────────────────────────────────────────────
 
 // Inscription influenceur
