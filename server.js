@@ -32,6 +32,20 @@ function adminAuth(req, res, next) {
   }
 }
 
+// Middleware protection utilisateur connecté (influenceur ou restaurateur)
+function userAuth(req, res, next) {
+  const auth = req.headers['authorization']
+  if (!auth || !auth.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Tu dois être connecté' })
+  }
+  try {
+    req.user = jwt.verify(auth.slice(7), JWT_SECRET)
+    next()
+  } catch {
+    return res.status(401).json({ error: 'Session expirée, reconnecte-toi' })
+  }
+}
+
 // ─── ROUTES PUBLIQUES ─────────────────────────────────────────────────────────
 
 // Tous les restaurants
@@ -111,9 +125,11 @@ app.post('/inscription', async (req, res) => {
 })
 
 // Candidature d'un influenceur à une offre
-app.post('/candidatures', async (req, res) => {
-  const { influenceur_id, offre_id } = req.body
-  if (!influenceur_id || !offre_id) return res.status(400).json({ error: 'Champs manquants' })
+app.post('/candidatures', userAuth, async (req, res) => {
+  const { offre_id } = req.body
+  const influenceur_id = req.user.id
+  if (!offre_id) return res.status(400).json({ error: 'Champs manquants' })
+  if (req.user.role !== 'influenceur') return res.status(403).json({ error: 'Seuls les influenceurs peuvent candidater' })
 
   // Vérifier que l'offre est active et a des places
   const { data: offre, error: offreError } = await supabase
@@ -137,6 +153,15 @@ app.post('/candidatures', async (req, res) => {
   if (offre.tranche_max && influenceur.abonnes > offre.tranche_max) {
     return res.status(400).json({ error: 'Ton audience dépasse le ciblage de cette offre' })
   }
+
+  // Vérifier qu'il n'a pas déjà candidaté
+  const { data: dejaCandidat } = await supabase
+    .from('candidatures')
+    .select('id')
+    .eq('influenceur_id', influenceur_id)
+    .eq('offre_id', offre_id)
+    .single()
+  if (dejaCandidat) return res.status(400).json({ error: 'Tu as déjà candidaté à cette offre' })
 
   const { data, error } = await supabase
     .from('candidatures')
