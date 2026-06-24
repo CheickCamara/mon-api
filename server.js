@@ -720,6 +720,7 @@ app.get('/admin/stats', adminAuth, async (req, res) => {
     { count: total_candidatures },
     { count: candidatures_en_attente },
     { count: posts_publies },
+    { count: collaborations_honorees },
     { count: total_restaurants },
     { count: restaurants_en_attente },
     { count: total_offres },
@@ -732,6 +733,7 @@ app.get('/admin/stats', adminAuth, async (req, res) => {
     supabase.from('candidatures').select('*', { count: 'exact', head: true }),
     supabase.from('candidatures').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente'),
     supabase.from('candidatures').select('*', { count: 'exact', head: true }).eq('post_publie', true),
+    supabase.from('candidatures').select('*', { count: 'exact', head: true }).eq('statut', 'honoree'),
     supabase.from('restaurants').select('*', { count: 'exact', head: true }),
     supabase.from('restaurants').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente'),
     supabase.from('offres').select('*', { count: 'exact', head: true }),
@@ -752,7 +754,7 @@ app.get('/admin/stats', adminAuth, async (req, res) => {
 
   res.json({
     influenceurs: { total: total_influenceurs, en_attente, valides, refuses },
-    candidatures: { total: total_candidatures, en_attente: candidatures_en_attente, posts_publies },
+    candidatures: { total: total_candidatures, en_attente: candidatures_en_attente, posts_publies, honorees: collaborations_honorees },
     restaurants: { total: total_restaurants, en_attente: restaurants_en_attente },
     offres: { total: total_offres, en_attente: offres_en_attente },
     inscriptions_semaine,
