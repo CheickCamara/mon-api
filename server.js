@@ -819,9 +819,9 @@ app.delete('/restaurateur/offres/:id', userAuth, async (req, res) => {
 
 // Inscription influenceur
 app.post('/auth/inscription-influenceur', async (req, res) => {
-  const { nom, email, mot_de_passe, reseau, abonnes } = req.body
-  if (!nom || !email || !mot_de_passe || !reseau || !abonnes) {
-    return res.status(400).json({ error: 'Tous les champs sont requis' })
+  const { nom, email, mot_de_passe, reseau, abonnes, pseudo } = req.body
+  if (!nom || !email || !mot_de_passe || !reseau || !abonnes || !pseudo) {
+    return res.status(400).json({ error: 'Tous les champs sont requis, y compris le pseudo' })
   }
   if (!['instagram', 'tiktok'].includes(reseau)) {
     return res.status(400).json({ error: 'Réseau invalide (instagram ou tiktok)' })
@@ -833,10 +833,11 @@ app.post('/auth/inscription-influenceur', async (req, res) => {
   const { data: restoExistant } = await supabase.from('restaurateurs').select('id').eq('email', email).single()
   if (restoExistant) return res.status(409).json({ error: 'Cet email est déjà utilisé pour un compte restaurateur. Utilise une adresse différente.' })
 
+  const pseudoPropre = pseudo.replace(/^@/, '').trim()
   const hash = await bcrypt.hash(mot_de_passe, 10)
   const { data, error } = await supabase
     .from('influenceurs')
-    .insert({ nom, email, mot_de_passe: hash, reseau, abonnes: Number(abonnes) })
+    .insert({ nom, email, mot_de_passe: hash, reseau, abonnes: Number(abonnes), pseudo: pseudoPropre })
     .select('id, nom, email, reseau, abonnes, statut')
     .single()
   if (error) {
