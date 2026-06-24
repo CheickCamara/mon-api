@@ -243,23 +243,25 @@ app.post('/auth/inscription-influenceur', async (req, res) => {
 
 // Inscription restaurateur
 app.post('/auth/inscription-restaurateur', async (req, res) => {
-  const { nom, email, mot_de_passe, nom_etablissement, adresse } = req.body
-  if (!nom || !email || !mot_de_passe || !nom_etablissement || !adresse) {
+  const { nom, email, mot_de_passe, nom_etablissement, adresse, siret, telephone, description } = req.body
+  if (!nom || !email || !mot_de_passe || !nom_etablissement || !adresse || !siret) {
     return res.status(400).json({ error: 'Tous les champs sont requis' })
+  }
+  if (siret.replace(/\s/g, '').length !== 14) {
+    return res.status(400).json({ error: 'Le SIRET doit contenir 14 chiffres' })
   }
   const hash = await bcrypt.hash(mot_de_passe, 10)
 
-  // Créer le compte restaurateur dans influenceurs avec rôle restaurateur
   const { data: resto, error: restoError } = await supabase
     .from('restaurants')
-    .insert({ nom: nom_etablissement, adresse, email, statut: 'Ouvert' })
+    .insert({ nom: nom_etablissement, adresse, email, statut: 'en_attente', siret, telephone: telephone || null, description: description || null })
     .select('id')
     .single()
   if (restoError) return res.status(500).json({ error: restoError.message })
 
   const { data, error } = await supabase
     .from('restaurateurs')
-    .insert({ nom, email, mot_de_passe: hash, restaurant_id: resto.id })
+    .insert({ nom, email, mot_de_passe: hash, restaurant_id: resto.id, siret })
     .select('id, nom, email, restaurant_id')
     .single()
   if (error) {
@@ -267,7 +269,7 @@ app.post('/auth/inscription-restaurateur', async (req, res) => {
     return res.status(500).json({ error: error.message })
   }
   const token = jwt.sign({ id: data.id, role: 'restaurateur', restaurant_id: resto.id }, JWT_SECRET, { expiresIn: '7d' })
-  res.json({ token, utilisateur: data })
+  res.json({ token, utilisateur: { ...data, role: 'restaurateur' } })
 })
 
 // Connexion (influenceur ou restaurateur)
