@@ -341,6 +341,22 @@ app.get('/mon-espace/candidatures', userAuth, async (req, res) => {
   res.json(data)
 })
 
+// Retirer une candidature en attente (influenceur)
+app.delete('/mon-espace/candidatures/:id', userAuth, async (req, res) => {
+  if (req.user.role !== 'influenceur') return res.status(403).json({ error: 'Accès refusé' })
+  const { data: cand } = await supabase
+    .from('candidatures')
+    .select('id, statut, influenceur_id')
+    .eq('id', req.params.id)
+    .single()
+  if (!cand) return res.status(404).json({ error: 'Candidature introuvable' })
+  if (cand.influenceur_id !== req.user.id) return res.status(403).json({ error: 'Accès refusé' })
+  if (cand.statut !== 'en_attente') return res.status(400).json({ error: 'Seules les candidatures en attente peuvent être retirées.' })
+  const { error } = await supabase.from('candidatures').delete().eq('id', req.params.id)
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ success: true })
+})
+
 // Notifications non vues (candidatures valide/refuse depuis la dernière visite)
 app.get('/mon-espace/notifications', userAuth, async (req, res) => {
   const depuis = req.query.depuis // timestamp ISO passé par le frontend
