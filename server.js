@@ -284,7 +284,7 @@ app.get('/restaurateur/candidatures', userAuth, async (req, res) => {
   const { data, error } = await supabase
     .from('candidatures')
     .select(`
-      id, statut, date_candidature, post_publie,
+      id, statut, date_candidature, post_publie, lien_publication, capture_story,
       influenceurs (nom, email, reseau, abonnes),
       offres (titre, contrepartie)
     `)
