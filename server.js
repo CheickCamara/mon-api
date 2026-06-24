@@ -455,13 +455,31 @@ app.post('/messages/:candidature_id', userAuth, async (req, res) => {
   // Notifier le destinataire par email
   if (resend) {
     const estRestaurateur = req.user.role === 'restaurateur'
-    const destinataireEmail = estRestaurateur ? cand.influenceurs?.email : null
-    const destinataireNom = estRestaurateur ? cand.influenceurs?.nom : null
-    const expediteurNom = estRestaurateur ? cand.offres?.restaurants?.nom : cand.influenceurs?.nom
     const offreTitre = cand.offres?.titre ?? ''
+    const siteUrl = 'https://mon-site-omega-two.vercel.app'
+
+    let destinataireEmail = null
+    let destinataireNom = null
+    let expediteurNom = null
+
+    if (estRestaurateur) {
+      // Restaurateur → influenceur
+      destinataireEmail = cand.influenceurs?.email
+      destinataireNom = cand.influenceurs?.nom
+      expediteurNom = cand.offres?.restaurants?.nom
+    } else {
+      // Influenceur → restaurateur : récupérer l'email du restaurateur
+      const { data: resto } = await supabase
+        .from('restaurateurs')
+        .select('nom, email')
+        .eq('restaurant_id', cand.restaurant_id)
+        .single()
+      destinataireEmail = resto?.email
+      destinataireNom = resto?.nom
+      expediteurNom = cand.influenceurs?.nom
+    }
 
     if (destinataireEmail) {
-      const siteUrl = 'https://mon-site-omega-two.vercel.app'
       await resend.emails.send({
         from: 'Pop Fluence <onboarding@resend.dev>',
         to: destinataireEmail,
