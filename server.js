@@ -700,6 +700,73 @@ app.post('/auth/connexion', async (req, res) => {
   return res.status(404).json({ error: 'Aucun compte trouvé avec cet email' })
 })
 
+// ─── MOT DE PASSE OUBLIÉ ──────────────────────────────────────────────────────
+
+app.post('/auth/mot-de-passe-oublie', async (req, res) => {
+  const { email } = req.body
+  if (!email) return res.status(400).json({ error: 'Email requis' })
+
+  // Vérifier si l'email existe (influenceur ou restaurateur)
+  const { data: influenceur } = await supabase.from('influenceurs').select('id, nom').eq('email', email).single()
+  const { data: restaurateur } = await supabase.from('restaurateurs').select('id, nom').eq('email', email).single()
+  const utilisateur = influenceur || restaurateur
+
+  // Toujours répondre OK pour ne pas révéler si l'email existe
+  if (!utilisateur || !resend) return res.json({ message: 'Si un compte existe, un email a été envoyé.' })
+
+  const crypto = require('crypto')
+  const token = crypto.randomBytes(32).toString('hex')
+  const expires_at = new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1h
+
+  await supabase.from('reset_tokens').insert({ email, token, expires_at })
+
+  const resetUrl = `https://mon-site-omega-two.vercel.app?reset_token=${token}`
+
+  await resend.emails.send({
+    from: 'Pop Fluence <onboarding@resend.dev>',
+    to: email,
+    subject: '🔑 Réinitialisation de ton mot de passe',
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+        <h2 style="color:#7c3aed;">🔑 Réinitialisation du mot de passe</h2>
+        <p>Bonjour ${utilisateur.nom},</p>
+        <p>Tu as demandé à réinitialiser ton mot de passe. Clique sur le bouton ci-dessous :</p>
+        <a href="${resetUrl}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+          Réinitialiser mon mot de passe →
+        </a>
+        <p style="margin-top:16px;color:#888;font-size:0.85rem;">Ce lien est valable <strong>1 heure</strong>. Si tu n'as pas fait cette demande, ignore cet email.</p>
+        <p style="color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
+      </div>
+    `,
+  }).catch(() => {})
+
+  res.json({ message: 'Si un compte existe, un email a été envoyé.' })
+})
+
+app.post('/auth/reset-mot-de-passe', async (req, res) => {
+  const { token, nouveau_mot_de_passe } = req.body
+  if (!token || !nouveau_mot_de_passe) return res.status(400).json({ error: 'Token et nouveau mot de passe requis' })
+  if (nouveau_mot_de_passe.length < 6) return res.status(400).json({ error: 'Le mot de passe doit faire au moins 6 caractères' })
+
+  const { data: reset } = await supabase.from('reset_tokens').select('*').eq('token', token).eq('used', false).single()
+  if (!reset) return res.status(400).json({ error: 'Lien invalide ou expiré' })
+  if (new Date(reset.expires_at) < new Date()) return res.status(400).json({ error: 'Lien expiré' })
+
+  const hash = await bcrypt.hash(nouveau_mot_de_passe, 10)
+
+  // Mettre à jour dans influenceurs ou restaurateurs
+  const { data: influenceur } = await supabase.from('influenceurs').select('id').eq('email', reset.email).single()
+  if (influenceur) {
+    await supabase.from('influenceurs').update({ mot_de_passe: hash }).eq('email', reset.email)
+  } else {
+    await supabase.from('restaurateurs').update({ mot_de_passe: hash }).eq('email', reset.email)
+  }
+
+  await supabase.from('reset_tokens').update({ used: true }).eq('token', token)
+
+  res.json({ message: 'Mot de passe mis à jour avec succès' })
+})
+
 // ─── ROUTES ADMIN ─────────────────────────────────────────────────────────────
 
 // Connexion admin
