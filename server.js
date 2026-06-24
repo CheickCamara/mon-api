@@ -32,7 +32,15 @@ async function geocodeAdresse(adresse) {
 }
 const JWT_SECRET = process.env.JWT_SECRET
 
-app.use(cors())
+app.use(cors({
+  origin: [
+    'https://mon-site-omega-two.vercel.app',
+    'https://popfluence.io',
+    'https://www.popfluence.io',
+    'http://localhost:5173',
+  ],
+  credentials: true,
+}))
 app.use(express.json())
 
 // Middleware protection admin via token JWT
@@ -1170,6 +1178,13 @@ app.delete('/admin/offres/:id', adminAuth, async (req, res) => {
   if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true })
 })
+
+// Purge des tokens de reset expirés au démarrage puis toutes les 24h
+async function purgerTokensExpires() {
+  await supabase.from('reset_tokens').delete().lt('expires_at', new Date().toISOString())
+}
+purgerTokensExpires()
+setInterval(purgerTokensExpires, 24 * 60 * 60 * 1000)
 
 app.listen(PORT, () => {
   console.log(`Serveur démarré sur http://localhost:${PORT}`)
