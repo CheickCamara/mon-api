@@ -354,7 +354,7 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
   // Vérifier que la candidature appartient bien à ce restaurant
   const { data: cand } = await supabase
     .from('candidatures')
-    .select('id, restaurant_id, influenceurs (nom, email), offres (titre, restaurants (nom))')
+    .select('id, offre_id, restaurant_id, influenceurs (nom, email), offres (titre, restaurants (nom))')
     .eq('id', req.params.id)
     .single()
 
@@ -363,6 +363,11 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
 
   const { error } = await supabase.from('candidatures').update({ statut }).eq('id', req.params.id)
   if (error) return res.status(500).json({ error: error.message })
+
+  // Décrémenter places_restantes quand on valide
+  if (statut === 'valide' && cand.offre_id) {
+    await supabase.rpc('decrement_places', { p_offre_id: cand.offre_id })
+  }
 
   // Notifier l'influenceur par e-mail
   const influenceur = cand.influenceurs
