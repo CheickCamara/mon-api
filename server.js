@@ -241,7 +241,7 @@ app.get('/mon-espace/candidatures', userAuth, async (req, res) => {
   const { data, error } = await supabase
     .from('candidatures')
     .select(`
-      id, statut, date_candidature, lien_publication, post_publie,
+      id, statut, date_candidature, lien_publication, post_publie, capture_story,
       offres (titre, contrepartie, valeur_indicative, restaurants (nom, adresse))
     `)
     .eq('influenceur_id', req.user.id)
@@ -292,12 +292,11 @@ app.get('/restaurateur/candidatures', userAuth, async (req, res) => {
   res.json(data)
 })
 
-// Soumettre la preuve de publication
+// Soumettre la preuve de publication (lien ou capture story)
 app.put('/mon-espace/candidatures/:id/publication', userAuth, async (req, res) => {
-  const { lien_publication } = req.body
-  if (!lien_publication) return res.status(400).json({ error: 'Lien de publication requis' })
+  const { lien_publication, capture_story } = req.body
+  if (!lien_publication && !capture_story) return res.status(400).json({ error: 'Lien ou capture requis' })
 
-  // Vérifier que la candidature appartient bien à cet influenceur et qu'elle est validée
   const { data: cand } = await supabase
     .from('candidatures')
     .select('id, statut, influenceur_id')
@@ -308,13 +307,43 @@ app.put('/mon-espace/candidatures/:id/publication', userAuth, async (req, res) =
   if (cand.influenceur_id !== req.user.id) return res.status(403).json({ error: 'Accès refusé' })
   if (cand.statut !== 'valide') return res.status(400).json({ error: 'Ta candidature doit être acceptée avant de soumettre une publication' })
 
-  const { error } = await supabase
-    .from('candidatures')
-    .update({ lien_publication, post_publie: true })
-    .eq('id', req.params.id)
+  const updates = { post_publie: true }
+  if (lien_publication) updates.lien_publication = lien_publication
+  if (capture_story) updates.capture_story = capture_story
 
+  const { error } = await supabase.from('candidatures').update(updates).eq('id', req.params.id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ message: 'Publication enregistrée, merci !' })
+})
+
+// Upload capture story vers Supabase Storage
+app.post('/mon-espace/candidatures/:id/upload-story', userAuth, async (req, res) => {
+  const { data: cand } = await supabase
+    .from('candidatures')
+    .select('id, statut, influenceur_id')
+    .eq('id', req.params.id)
+    .single()
+
+  if (!cand) return res.status(404).json({ error: 'Candidature introuvable' })
+  if (cand.influenceur_id !== req.user.id) return res.status(403).json({ error: 'Accès refusé' })
+
+  const chunks = []
+  req.on('data', chunk => chunks.push(chunk))
+  req.on('end', async () => {
+    const buffer = Buffer.concat(chunks)
+    const contentType = req.headers['content-type'] || 'image/jpeg'
+    const ext = contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'jpg'
+    const fileName = `story_${req.params.id}_${Date.now()}.${ext}`
+
+    const { error } = await supabase.storage
+      .from('publications')
+      .upload(fileName, buffer, { contentType, upsert: true })
+
+    if (error) return res.status(500).json({ error: error.message })
+
+    const { data: urlData } = supabase.storage.from('publications').getPublicUrl(fileName)
+    res.json({ url: urlData.publicUrl })
+  })
 })
 
 // ─── AUTHENTIFICATION ─────────────────────────────────────────────────────────
