@@ -6,7 +6,7 @@ const bcrypt = require('bcryptjs')
 const { createClient } = require('@supabase/supabase-js')
 const { Resend } = require('resend')
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -189,7 +189,7 @@ app.post('/candidatures', userAuth, async (req, res) => {
     .eq('id', offre_id)
     .single()
 
-  if (restaurateurData?.email) {
+  if (restaurateurData?.email && resend) {
     await resend.emails.send({
       from: 'Pop Fluence <onboarding@resend.dev>',
       to: restaurateurData.email,
@@ -563,7 +563,7 @@ app.put('/admin/candidatures/:id', adminAuth, async (req, res) => {
     const influenceur = cand?.influenceurs
     const offre = cand?.offres
 
-    if (influenceur?.email) {
+    if (influenceur?.email && resend) {
       const accepte = statut === 'valide'
       await resend.emails.send({
         from: 'Pop Fluence <onboarding@resend.dev>',
