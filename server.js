@@ -4,6 +4,9 @@ const cors = require('cors')
 const jwt = require('jsonwebtoken')
 const bcrypt = require('bcryptjs')
 const { createClient } = require('@supabase/supabase-js')
+const { Resend } = require('resend')
+
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -172,6 +175,40 @@ app.post('/candidatures', userAuth, async (req, res) => {
     .select('id')
     .single()
   if (error) return res.status(500).json({ error: error.message })
+
+  // Notifier le restaurateur par e-mail
+  const { data: restaurateurData } = await supabase
+    .from('restaurateurs')
+    .select('email, nom')
+    .eq('restaurant_id', offre.restaurant_id)
+    .single()
+
+  const { data: offreDetails } = await supabase
+    .from('offres')
+    .select('titre')
+    .eq('id', offre_id)
+    .single()
+
+  if (restaurateurData?.email) {
+    await resend.emails.send({
+      from: 'Pop Fluence <onboarding@resend.dev>',
+      to: restaurateurData.email,
+      subject: '🎉 Nouvelle candidature reçue !',
+      html: `
+        <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto;">
+          <h2 style="color: #7c3aed;">Nouvelle candidature sur Pop Fluence</h2>
+          <p>Bonjour ${restaurateurData.nom},</p>
+          <p>Un influenceur vient de candidater à votre offre <strong>${offreDetails?.titre ?? ''}</strong>.</p>
+          <p>Connectez-vous à votre espace pour consulter son profil et accepter ou refuser sa candidature.</p>
+          <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+            Voir la candidature
+          </a>
+          <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
+        </div>
+      `,
+    }).catch(() => {})
+  }
+
   res.json({ id: data.id, message: 'Candidature envoyée' })
 })
 
@@ -464,6 +501,46 @@ app.put('/admin/candidatures/:id', adminAuth, async (req, res) => {
   if (post_publie !== undefined) updates.post_publie = post_publie
   const { error } = await supabase.from('candidatures').update(updates).eq('id', req.params.id)
   if (error) return res.status(500).json({ error: error.message })
+
+  // Notifier l'influenceur si la candidature est validée ou refusée
+  if (statut === 'valide' || statut === 'refuse') {
+    const { data: cand } = await supabase
+      .from('candidatures')
+      .select('influenceurs (nom, email), offres (titre, restaurants (nom))')
+      .eq('id', req.params.id)
+      .single()
+
+    const influenceur = cand?.influenceurs
+    const offre = cand?.offres
+
+    if (influenceur?.email) {
+      const accepte = statut === 'valide'
+      await resend.emails.send({
+        from: 'Pop Fluence <onboarding@resend.dev>',
+        to: influenceur.email,
+        subject: accepte ? '🎉 Ta candidature a été acceptée !' : '❌ Ta candidature n\'a pas été retenue',
+        html: `
+          <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto;">
+            <h2 style="color: #7c3aed;">
+              ${accepte ? '🎉 Bonne nouvelle !' : 'Candidature non retenue'}
+            </h2>
+            <p>Bonjour ${influenceur.nom},</p>
+            ${accepte
+              ? `<p>Ta candidature pour l'offre <strong>${offre?.titre ?? ''}</strong> chez <strong>${offre?.restaurants?.nom ?? ''}</strong> a été <strong style="color:#22c55e;">acceptée</strong> !</p>
+                 <p>Le restaurant va te contacter prochainement pour organiser ta visite. Prépare ton contenu ✨</p>`
+              : `<p>Ta candidature pour l'offre <strong>${offre?.titre ?? ''}</strong> chez <strong>${offre?.restaurants?.nom ?? ''}</strong> n'a malheureusement pas été retenue cette fois.</p>
+                 <p>Ne te décourage pas, d'autres offres t'attendent sur la plateforme !</p>`
+            }
+            <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+              Voir mes candidatures
+            </a>
+            <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
+          </div>
+        `,
+      }).catch(() => {})
+    }
+  }
+
   res.json({ success: true })
 })
 
