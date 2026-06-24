@@ -175,6 +175,30 @@ app.post('/candidatures', userAuth, async (req, res) => {
   res.json({ id: data.id, message: 'Candidature envoyée' })
 })
 
+// Mon profil
+app.get('/mon-espace/profil', userAuth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('influenceurs')
+    .select('id, nom, email, reseau, abonnes, statut, date_inscription')
+    .eq('id', req.user.id)
+    .single()
+  if (error || !data) return res.status(404).json({ error: 'Profil introuvable' })
+  res.json(data)
+})
+
+// Modifier mon profil
+app.put('/mon-espace/profil', userAuth, async (req, res) => {
+  const { nom, reseau, abonnes, mot_de_passe } = req.body
+  const updates = {}
+  if (nom) updates.nom = nom
+  if (reseau) updates.reseau = reseau
+  if (abonnes) updates.abonnes = Number(abonnes)
+  if (mot_de_passe) updates.mot_de_passe = await bcrypt.hash(mot_de_passe, 10)
+  const { error } = await supabase.from('influenceurs').update(updates).eq('id', req.user.id)
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ message: 'Profil mis à jour' })
+})
+
 // Mes candidatures (influenceur connecté)
 app.get('/mon-espace/candidatures', userAuth, async (req, res) => {
   const { data, error } = await supabase
