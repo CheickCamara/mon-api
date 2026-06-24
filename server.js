@@ -344,6 +344,56 @@ app.post('/mon-espace/candidatures/:id/upload-story', userAuth, upload.single('f
   res.json({ url: urlData.publicUrl })
 })
 
+// Accepter ou refuser une candidature (restaurateur)
+app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
+  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
+  const { statut } = req.body
+  if (!['valide', 'refuse'].includes(statut)) return res.status(400).json({ error: 'Statut invalide' })
+
+  // Vérifier que la candidature appartient bien à ce restaurant
+  const { data: cand } = await supabase
+    .from('candidatures')
+    .select('id, restaurant_id, influenceurs (nom, email), offres (titre, restaurants (nom))')
+    .eq('id', req.params.id)
+    .single()
+
+  if (!cand) return res.status(404).json({ error: 'Candidature introuvable' })
+  if (cand.restaurant_id !== req.user.restaurant_id) return res.status(403).json({ error: 'Accès refusé' })
+
+  const { error } = await supabase.from('candidatures').update({ statut }).eq('id', req.params.id)
+  if (error) return res.status(500).json({ error: error.message })
+
+  // Notifier l'influenceur par e-mail
+  const influenceur = cand.influenceurs
+  const offre = cand.offres
+  if (influenceur?.email && resend) {
+    const accepte = statut === 'valide'
+    await resend.emails.send({
+      from: 'Pop Fluence <onboarding@resend.dev>',
+      to: influenceur.email,
+      subject: accepte ? '🎉 Ta candidature a été acceptée !' : '❌ Ta candidature n\'a pas été retenue',
+      html: `
+        <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto;">
+          <h2 style="color: #7c3aed;">${accepte ? '🎉 Bonne nouvelle !' : 'Candidature non retenue'}</h2>
+          <p>Bonjour ${influenceur.nom},</p>
+          ${accepte
+            ? `<p>Ta candidature pour l'offre <strong>${offre?.titre ?? ''}</strong> chez <strong>${offre?.restaurants?.nom ?? ''}</strong> a été <strong style="color:#22c55e;">acceptée</strong> !</p>
+               <p>Le restaurant va te contacter prochainement. Prépare ton contenu ✨</p>`
+            : `<p>Ta candidature pour l'offre <strong>${offre?.titre ?? ''}</strong> chez <strong>${offre?.restaurants?.nom ?? ''}</strong> n'a pas été retenue cette fois.</p>
+               <p>D'autres offres t'attendent sur la plateforme !</p>`
+          }
+          <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+            Voir mes candidatures
+          </a>
+          <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
+        </div>
+      `,
+    }).catch(() => {})
+  }
+
+  res.json({ success: true })
+})
+
 // ─── AUTHENTIFICATION ─────────────────────────────────────────────────────────
 
 // Inscription influenceur
