@@ -21,6 +21,8 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY
 )
 
+const SITE_URL = 'https://mon-site-omega-two.vercel.app'
+
 const app = express()
 const PORT = 3001
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
@@ -263,7 +265,7 @@ app.post('/candidatures', userAuth, async (req, res) => {
           <p>Bonjour ${restaurateurData.nom},</p>
           <p>Un influenceur vient de candidater à votre offre <strong>${offreDetails?.titre ?? ''}</strong>.</p>
           <p>Connectez-vous à votre espace pour consulter son profil et accepter ou refuser sa candidature.</p>
-          <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+          <a href="${SITE_URL}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
             Voir la candidature
           </a>
           <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
@@ -290,7 +292,7 @@ app.post('/candidatures', userAuth, async (req, res) => {
           <p>Bonjour ${influenceurData.nom},</p>
           <p>Ta candidature pour l'offre <strong>${offreDetails?.titre ?? ''}</strong> a bien été envoyée au restaurant.</p>
           <p>Le restaurant a <strong>48h</strong> pour consulter ton profil et te répondre. Tu recevras un email dès qu'une décision est prise.</p>
-          <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+          <a href="${SITE_URL}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
             Voir mes candidatures
           </a>
           <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
@@ -527,7 +529,7 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
             : `<p>Ta candidature pour l'offre <strong>${offre?.titre ?? ''}</strong> chez <strong>${offre?.restaurants?.nom ?? ''}</strong> n'a pas été retenue cette fois.</p>
                <p>D'autres offres t'attendent sur la plateforme !</p>`
           }
-          <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+          <a href="${SITE_URL}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
             Voir mes candidatures
           </a>
           <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
@@ -548,7 +550,7 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
           <p>Bonjour ${influenceur.nom},</p>
           <p>Le restaurant <strong>${offre?.restaurants?.nom ?? ''}</strong> a confirmé ta publication pour l'offre <strong>${offre?.titre ?? ''}</strong>.</p>
           <p>Cette collaboration est désormais comptabilisée dans ton historique. Bravo ! 🎉</p>
-          <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+          <a href="${SITE_URL}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
             Voir mon profil
           </a>
           <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
@@ -1116,7 +1118,7 @@ app.put('/admin/influenceurs/:id', adminAuth, async (req, res) => {
           <p>Bonjour ${influenceur.nom},</p>
           <p>Ton compte a été <strong style="color:#22c55e;">validé par notre équipe</strong>. Tu peux maintenant candidater aux offres des restaurants près de chez toi.</p>
           <p>Connecte-toi et découvre les offres disponibles ✨</p>
-          <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+          <a href="${SITE_URL}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
             Voir les offres →
           </a>
           <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
@@ -1210,7 +1212,7 @@ app.put('/admin/candidatures/:id', adminAuth, async (req, res) => {
               : `<p>Ta candidature pour l'offre <strong>${offre?.titre ?? ''}</strong> chez <strong>${offre?.restaurants?.nom ?? ''}</strong> n'a malheureusement pas été retenue cette fois.</p>
                  <p>Ne te décourage pas, d'autres offres t'attendent sur la plateforme !</p>`
             }
-            <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+            <a href="${SITE_URL}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
               Voir mes candidatures
             </a>
             <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
@@ -1269,7 +1271,7 @@ app.put('/admin/restaurants/:id', adminAuth, async (req, res) => {
           <h2 style="color:#7c3aed;">🎉 Bienvenue sur Pop Fluence !</h2>
           <p>Bonjour,</p>
           <p>Votre restaurant <strong>${resto.nom}</strong> a été <strong style="color:#22c55e;">validé par notre équipe</strong>. Vous pouvez maintenant publier vos premières offres et recevoir des candidatures d'influenceurs.</p>
-          <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+          <a href="${SITE_URL}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
             Accéder à mon espace →
           </a>
           <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
