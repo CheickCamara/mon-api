@@ -269,6 +269,10 @@ app.post('/auth/inscription-influenceur', async (req, res) => {
   if (Number(abonnes) < 1000) {
     return res.status(400).json({ error: 'Minimum 1 000 abonnés requis' })
   }
+  // Vérifier que l'email n'est pas déjà utilisé comme restaurateur
+  const { data: restoExistant } = await supabase.from('restaurateurs').select('id').eq('email', email).single()
+  if (restoExistant) return res.status(409).json({ error: 'Cet email est déjà utilisé pour un compte restaurateur. Utilise une adresse différente.' })
+
   const hash = await bcrypt.hash(mot_de_passe, 10)
   const { data, error } = await supabase
     .from('influenceurs')
@@ -292,6 +296,10 @@ app.post('/auth/inscription-restaurateur', async (req, res) => {
   if (siret.replace(/\s/g, '').length !== 14) {
     return res.status(400).json({ error: 'Le SIRET doit contenir 14 chiffres' })
   }
+  // Vérifier que l'email n'est pas déjà utilisé comme influenceur
+  const { data: influExistant } = await supabase.from('influenceurs').select('id').eq('email', email).single()
+  if (influExistant) return res.status(409).json({ error: 'Cet email est déjà utilisé pour un compte influenceur. Utilise une adresse différente.' })
+
   const hash = await bcrypt.hash(mot_de_passe, 10)
 
   const { data: resto, error: restoError } = await supabase
