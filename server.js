@@ -428,10 +428,14 @@ app.post('/messages/:candidature_id', userAuth, async (req, res) => {
   const { contenu } = req.body
   if (!contenu?.trim()) return res.status(400).json({ error: 'Message vide' })
 
-  // Vérifier accès
+  // Vérifier accès + récupérer infos pour l'email
   const { data: cand } = await supabase
     .from('candidatures')
-    .select('influenceur_id, restaurant_id')
+    .select(`
+      influenceur_id, restaurant_id,
+      influenceurs (nom, email),
+      offres (titre, restaurants (nom))
+    `)
     .eq('id', candId)
     .single()
   if (!cand) return res.status(404).json({ error: 'Candidature introuvable' })
@@ -447,6 +451,39 @@ app.post('/messages/:candidature_id', userAuth, async (req, res) => {
     .select('id, expediteur, contenu, date_envoi')
     .single()
   if (error) return res.status(500).json({ error: error.message })
+
+  // Notifier le destinataire par email
+  if (resend) {
+    const estRestaurateur = req.user.role === 'restaurateur'
+    const destinataireEmail = estRestaurateur ? cand.influenceurs?.email : null
+    const destinataireNom = estRestaurateur ? cand.influenceurs?.nom : null
+    const expediteurNom = estRestaurateur ? cand.offres?.restaurants?.nom : cand.influenceurs?.nom
+    const offreTitre = cand.offres?.titre ?? ''
+
+    if (destinataireEmail) {
+      const siteUrl = 'https://mon-site-omega-two.vercel.app'
+      await resend.emails.send({
+        from: 'Pop Fluence <onboarding@resend.dev>',
+        to: destinataireEmail,
+        subject: `💬 Nouveau message de ${expediteurNom}`,
+        html: `
+          <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+            <h2 style="color:#7c3aed;">💬 Nouveau message</h2>
+            <p>Bonjour ${destinataireNom},</p>
+            <p><strong>${expediteurNom}</strong> t'a envoyé un message concernant l'offre <strong>${offreTitre}</strong> :</p>
+            <div style="background:#f5f3ff;border-left:4px solid #7c3aed;padding:12px 16px;border-radius:4px;margin:16px 0;font-style:italic;">
+              "${contenu.trim()}"
+            </div>
+            <a href="${siteUrl}" style="display:inline-block;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+              Répondre →
+            </a>
+            <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
+          </div>
+        `,
+      }).catch(() => {})
+    }
+  }
+
   res.json(data)
 })
 
