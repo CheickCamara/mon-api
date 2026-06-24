@@ -386,25 +386,6 @@ app.put('/restaurateur/mon-restaurant', userAuth, async (req, res) => {
   res.json({ success: true })
 })
 
-// Upload photo du restaurant
-app.post('/restaurateur/mon-restaurant/photo', userAuth, upload.single('photo'), async (req, res) => {
-  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
-  if (!req.file) return res.status(400).json({ error: 'Aucun fichier reçu' })
-
-  const ext = req.file.mimetype === 'image/png' ? 'png' : req.file.mimetype === 'image/webp' ? 'webp' : 'jpg'
-  const filePath = `restaurants/${req.user.restaurant_id}_${Date.now()}.${ext}`
-
-  const { error: uploadError } = await supabaseAdmin.storage.from('Publications').upload(filePath, req.file.buffer, {
-    contentType: req.file.mimetype, upsert: true,
-  })
-  if (uploadError) { console.error('Storage upload error:', uploadError); return res.status(500).json({ error: uploadError.message }) }
-
-  const { data: { publicUrl } } = supabaseAdmin.storage.from('Publications').getPublicUrl(filePath)
-  const { error } = await supabase.from('restaurants').update({ image: publicUrl }).eq('id', req.user.restaurant_id)
-  if (error) return res.status(500).json({ error: error.message })
-  res.json({ url: publicUrl })
-})
-
 // Mes offres
 app.get('/restaurateur/mes-offres', userAuth, async (req, res) => {
   if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
