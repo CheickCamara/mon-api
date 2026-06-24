@@ -777,8 +777,47 @@ app.put('/admin/influenceurs/:id', adminAuth, async (req, res) => {
   if (!['valide', 'refuse', 'en_attente'].includes(statut)) {
     return res.status(400).json({ error: 'Statut invalide' })
   }
+  const { data: influenceur } = await supabase.from('influenceurs').select('nom, email').eq('id', req.params.id).single()
   const { error } = await supabase.from('influenceurs').update({ statut }).eq('id', req.params.id)
   if (error) return res.status(500).json({ error: error.message })
+
+  if (statut === 'valide' && influenceur?.email && resend) {
+    await resend.emails.send({
+      from: 'Pop Fluence <onboarding@resend.dev>',
+      to: influenceur.email,
+      subject: '🎉 Ton compte Pop Fluence est activé !',
+      html: `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+          <h2 style="color:#7c3aed;">🎉 Bienvenue sur Pop Fluence !</h2>
+          <p>Bonjour ${influenceur.nom},</p>
+          <p>Ton compte a été <strong style="color:#22c55e;">validé par notre équipe</strong>. Tu peux maintenant candidater aux offres des restaurants près de chez toi.</p>
+          <p>Connecte-toi et découvre les offres disponibles ✨</p>
+          <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+            Voir les offres →
+          </a>
+          <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
+        </div>
+      `,
+    }).catch(() => {})
+  }
+
+  if (statut === 'refuse' && influenceur?.email && resend) {
+    await resend.emails.send({
+      from: 'Pop Fluence <onboarding@resend.dev>',
+      to: influenceur.email,
+      subject: '❌ Ton inscription Pop Fluence n\'a pas été retenue',
+      html: `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+          <h2 style="color:#7c3aed;">Inscription non retenue</h2>
+          <p>Bonjour ${influenceur.nom},</p>
+          <p>Après examen de ton profil, nous ne sommes pas en mesure de valider ton inscription pour le moment.</p>
+          <p style="color:#888;font-size:0.85rem;">Si tu penses qu'il s'agit d'une erreur, contacte-nous à contact@popfluence.io</p>
+          <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
+        </div>
+      `,
+    }).catch(() => {})
+  }
+
   res.json({ success: true })
 })
 
@@ -871,11 +910,31 @@ app.post('/admin/restaurants', adminAuth, async (req, res) => {
 // Modifier un restaurant
 app.put('/admin/restaurants/:id', adminAuth, async (req, res) => {
   const { nom, adresse, description, telephone, statut, info } = req.body
-  const { error } = await supabase
-    .from('restaurants')
-    .update({ nom, adresse, description, telephone, statut, info })
-    .eq('id', req.params.id)
+
+  const { data: resto } = await supabase.from('restaurants').select('nom, statut, email').eq('id', req.params.id).single()
+  const { error } = await supabase.from('restaurants').update({ nom, adresse, description, telephone, statut, info }).eq('id', req.params.id)
   if (error) return res.status(500).json({ error: error.message })
+
+  // Email de bienvenue quand le restaurant passe de en_attente à valide
+  if (statut === 'valide' && resto?.statut === 'en_attente' && resto?.email && resend) {
+    await resend.emails.send({
+      from: 'Pop Fluence <onboarding@resend.dev>',
+      to: resto.email,
+      subject: '🎉 Votre restaurant est maintenant actif sur Pop Fluence !',
+      html: `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+          <h2 style="color:#7c3aed;">🎉 Bienvenue sur Pop Fluence !</h2>
+          <p>Bonjour,</p>
+          <p>Votre restaurant <strong>${resto.nom}</strong> a été <strong style="color:#22c55e;">validé par notre équipe</strong>. Vous pouvez maintenant publier vos premières offres et recevoir des candidatures d'influenceurs.</p>
+          <a href="https://mon-site-omega-two.vercel.app" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+            Accéder à mon espace →
+          </a>
+          <p style="margin-top:32px;color:#888;font-size:0.85rem;">L'équipe Pop Fluence</p>
+        </div>
+      `,
+    }).catch(() => {})
+  }
+
   res.json({ success: true })
 })
 
