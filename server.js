@@ -616,8 +616,25 @@ app.post('/auth/inscription-restaurateur', async (req, res) => {
   if (!nom || !email || !mot_de_passe || !nom_etablissement || !adresse || !siret) {
     return res.status(400).json({ error: 'Tous les champs sont requis' })
   }
-  if (siret.replace(/\s/g, '').length !== 14) {
+  const siretNettoyé = siret.replace(/\s/g, '')
+  if (siretNettoyé.length !== 14) {
     return res.status(400).json({ error: 'Le SIRET doit contenir 14 chiffres' })
+  }
+  // Vérifier le SIRET via l'API Sirene
+  try {
+    const sirenRes = await fetch(`https://entreprise.data.gouv.fr/api/sirene/v3/etablissements/${siretNettoyé}`)
+    if (sirenRes.status === 404) {
+      return res.status(400).json({ error: 'SIRET introuvable. Vérifie le numéro saisi.' })
+    }
+    if (sirenRes.ok) {
+      const sirenData = await sirenRes.json()
+      const etat = sirenData.etablissement?.etat_administratif_etablissement
+      if (etat === 'F') {
+        return res.status(400).json({ error: 'Cet établissement est fermé (SIRET inactif).' })
+      }
+    }
+  } catch {
+    // Si l'API Sirene est indisponible, on laisse passer
   }
   // Vérifier que l'email n'est pas déjà utilisé comme influenceur
   const { data: influExistant } = await supabase.from('influenceurs').select('id').eq('email', email).single()
@@ -627,14 +644,14 @@ app.post('/auth/inscription-restaurateur', async (req, res) => {
 
   const { data: resto, error: restoError } = await supabase
     .from('restaurants')
-    .insert({ nom: nom_etablissement, adresse, email, statut: 'en_attente', siret, telephone: telephone || null, description: description || null })
+    .insert({ nom: nom_etablissement, adresse, email, statut: 'en_attente', siret: siretNettoyé, telephone: telephone || null, description: description || null })
     .select('id')
     .single()
   if (restoError) return res.status(500).json({ error: restoError.message })
 
   const { data, error } = await supabase
     .from('restaurateurs')
-    .insert({ nom, email, mot_de_passe: hash, restaurant_id: resto.id, siret })
+    .insert({ nom, email, mot_de_passe: hash, restaurant_id: resto.id, siret: siretNettoyé })
     .select('id, nom, email, restaurant_id')
     .single()
   if (error) {
