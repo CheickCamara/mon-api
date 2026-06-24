@@ -175,6 +175,20 @@ app.post('/candidatures', userAuth, async (req, res) => {
   res.json({ id: data.id, message: 'Candidature envoyée' })
 })
 
+// Mes candidatures (influenceur connecté)
+app.get('/mon-espace/candidatures', userAuth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('candidatures')
+    .select(`
+      id, statut, date_candidature,
+      offres (titre, contrepartie, valeur_indicative, restaurants (nom, adresse))
+    `)
+    .eq('influenceur_id', req.user.id)
+    .order('date_candidature', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
+})
+
 // ─── AUTHENTIFICATION ─────────────────────────────────────────────────────────
 
 // Inscription influenceur
