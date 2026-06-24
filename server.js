@@ -481,6 +481,7 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
 
   if (!cand) return res.status(404).json({ error: 'Candidature introuvable' })
   if (cand.restaurant_id !== req.user.restaurant_id) return res.status(403).json({ error: 'Accès refusé' })
+  if (cand.statut === 'honoree') return res.status(400).json({ error: 'Une collaboration honorée ne peut plus être modifiée.' })
   if (statut === 'honoree' && !cand.post_publie) return res.status(400).json({ error: 'L\'influenceur n\'a pas encore soumis sa publication.' })
 
   const { error } = await supabase.from('candidatures').update({ statut }).eq('id', req.params.id)
