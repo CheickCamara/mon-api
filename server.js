@@ -216,13 +216,12 @@ app.post('/candidatures', userAuth, async (req, res) => {
 
 // Mon profil
 app.get('/mon-espace/profil', userAuth, async (req, res) => {
-  const { data, error } = await supabase
-    .from('influenceurs')
-    .select('id, nom, email, reseau, abonnes, statut, date_inscription')
-    .eq('id', req.user.id)
-    .single()
+  const [{ data, error }, { count }] = await Promise.all([
+    supabase.from('influenceurs').select('id, nom, email, reseau, abonnes, statut, date_inscription').eq('id', req.user.id).single(),
+    supabase.from('candidatures').select('*', { count: 'exact', head: true }).eq('influenceur_id', req.user.id).eq('statut', 'honoree'),
+  ])
   if (error || !data) return res.status(404).json({ error: 'Profil introuvable' })
-  res.json(data)
+  res.json({ ...data, collaborations_honorees: count ?? 0 })
 })
 
 // Modifier mon profil
