@@ -125,7 +125,7 @@ app.get('/restaurants/:id/profil-public', async (req, res) => {
   const [{ data: resto }, { data: offres }, avisRes] = await Promise.all([
     supabase.from('restaurants').select('id, nom, adresse, description, telephone, image, statut').eq('id', id).single(),
     supabase.from('offres').select('id, titre, description, contrepartie, valeur_indicative, places_restantes, tranche_min, tranche_max, conditions').eq('restaurant_id', id).eq('statut', 'active').gt('places_restantes', 0),
-    supabase.from('avis').select('note, commentaire, created_at, candidatures!inner(restaurant_id, influenceur_id, influenceurs(pseudo, nom))').eq('auteur_role', 'influenceur').eq('candidatures.restaurant_id', id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('avis').select('note, commentaire, created_at, candidatures!inner(restaurant_id)').eq('auteur_role', 'influenceur').eq('candidatures.restaurant_id', id).order('created_at', { ascending: false }).limit(10),
   ])
   if (!resto) return res.status(404).json({ error: 'Restaurant introuvable' })
   if (resto.statut === 'en_attente') return res.status(403).json({ error: 'Ce restaurant n\'est pas encore validé' })
@@ -196,14 +196,6 @@ app.post('/candidatures', userAuth, async (req, res) => {
   const influenceur_id = req.user.id
   if (!offre_id) return res.status(400).json({ error: 'Champs manquants' })
   if (req.user.role !== 'influenceur') return res.status(403).json({ error: 'Seuls les influenceurs peuvent candidater' })
-
-  // Limiter à 5 candidatures en attente simultanées
-  const { count: enAttente } = await supabase
-    .from('candidatures')
-    .select('id', { count: 'exact', head: true })
-    .eq('influenceur_id', influenceur_id)
-    .eq('statut', 'en_attente')
-  if ((enAttente ?? 0) >= 5) return res.status(400).json({ error: 'Tu as déjà 5 candidatures en attente. Attends une réponse avant d\'en envoyer de nouvelles.' })
 
   // Vérifier que l'offre est active et a des places
   const { data: offre, error: offreError } = await supabase
