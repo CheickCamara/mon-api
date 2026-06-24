@@ -217,7 +217,7 @@ app.post('/candidatures', userAuth, async (req, res) => {
 // Mon profil
 app.get('/mon-espace/profil', userAuth, async (req, res) => {
   const [{ data, error }, { count }] = await Promise.all([
-    supabase.from('influenceurs').select('id, nom, email, reseau, abonnes, statut, date_inscription').eq('id', req.user.id).single(),
+    supabase.from('influenceurs').select('id, nom, email, reseau, abonnes, statut, date_inscription, pseudo').eq('id', req.user.id).single(),
     supabase.from('candidatures').select('*', { count: 'exact', head: true }).eq('influenceur_id', req.user.id).eq('statut', 'honoree'),
   ])
   if (error || !data) return res.status(404).json({ error: 'Profil introuvable' })
@@ -226,12 +226,14 @@ app.get('/mon-espace/profil', userAuth, async (req, res) => {
 
 // Modifier mon profil
 app.put('/mon-espace/profil', userAuth, async (req, res) => {
-  const { nom, reseau, abonnes, mot_de_passe } = req.body
+  const { nom, reseau, abonnes, mot_de_passe, pseudo } = req.body
   const updates = {}
   if (nom) updates.nom = nom
   if (reseau) updates.reseau = reseau
   if (abonnes) updates.abonnes = Number(abonnes)
   if (mot_de_passe) updates.mot_de_passe = await bcrypt.hash(mot_de_passe, 10)
+  if (pseudo !== undefined && pseudo !== null) updates.pseudo = pseudo.replace(/^@/, '').trim()
+  console.log('PUT profil updates:', updates, 'user:', req.user.id)
   const { error } = await supabase.from('influenceurs').update(updates).eq('id', req.user.id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ message: 'Profil mis à jour' })
@@ -284,7 +286,7 @@ app.get('/restaurateur/candidatures', userAuth, async (req, res) => {
     .from('candidatures')
     .select(`
       id, statut, date_candidature, post_publie, lien_publication, capture_story,
-      influenceurs (nom, email, reseau, abonnes),
+      influenceurs (nom, email, reseau, abonnes, pseudo),
       offres (titre, contrepartie)
     `)
     .eq('restaurant_id', req.user.restaurant_id)
