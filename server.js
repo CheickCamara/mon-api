@@ -626,6 +626,38 @@ app.get('/mon-espace/avis-recus', userAuth, async (req, res) => {
 })
 
 // Note moyenne d'un influenceur (accessible aux restaurateurs)
+// Profil public d'un influenceur (accessible aux restaurateurs connectés)
+app.get('/influenceurs/:id/profil-public', userAuth, async (req, res) => {
+  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Réservé aux restaurateurs' })
+  const { data: inf, error } = await supabase
+    .from('influenceurs')
+    .select('id, nom, pseudo, reseau, abonnes, statut')
+    .eq('id', req.params.id)
+    .single()
+  if (error || !inf) return res.status(404).json({ error: 'Influenceur introuvable' })
+  if (inf.statut !== 'valide') return res.status(403).json({ error: 'Profil non disponible' })
+
+  // Publications soumises (collaborations honorées)
+  const { data: collabs } = await supabase
+    .from('candidatures')
+    .select('id, post_publie, lien_publication, date_candidature, offres(titre, restaurants(nom))')
+    .eq('influenceur_id', req.params.id)
+    .eq('statut', 'honoree')
+    .order('date_candidature', { ascending: false })
+
+  // Avis reçus de restaurateurs
+  const { data: avisData } = await supabase
+    .from('avis')
+    .select('note, commentaire, created_at, candidatures!inner(influenceur_id)')
+    .eq('auteur_role', 'restaurateur')
+    .eq('candidatures.influenceur_id', req.params.id)
+
+  const notes = (avisData || []).map((a: any) => a.note)
+  const moyenne = notes.length ? (notes.reduce((a: number, b: number) => a + b, 0) / notes.length).toFixed(1) : null
+
+  res.json({ influenceur: inf, collabs: collabs || [], moyenne, total_avis: notes.length })
+})
+
 app.get('/influenceurs/:id/avis', userAuth, async (req, res) => {
   const { data, error } = await supabase
     .from('avis')
