@@ -389,18 +389,18 @@ app.get('/restaurateur/stats', userAuth, async (req, res) => {
 
   const candidatures = candidaturesRes.data ?? []
   const total_candidatures = candidaturesRes.count ?? 0
-  const en_attente = candidatures.filter((c: any) => c.statut === 'en_attente').length
-  const valides = candidatures.filter((c: any) => c.statut === 'valide').length
+  const en_attente = candidatures.filter((c) => c.statut === 'en_attente').length
+  const valides = candidatures.filter((c) => c.statut === 'valide').length
   const honorees = honoreesRes.count ?? 0
   const publications = publiesRes.count ?? 0
   const offres = offresRes.data ?? []
-  const total_places = offres.reduce((acc: number, o: any) => acc + (o.nombre_places ?? 0), 0)
-  const places_utilisees = offres.reduce((acc: number, o: any) => acc + ((o.nombre_places ?? 0) - (o.places_restantes ?? 0)), 0)
+  const total_places = offres.reduce((acc, o) => acc + (o.nombre_places ?? 0), 0)
+  const places_utilisees = offres.reduce((acc, o) => acc + ((o.nombre_places ?? 0) - (o.places_restantes ?? 0)), 0)
   const taux_conversion = total_candidatures > 0 ? Math.round((honorees / total_candidatures) * 100) : 0
 
   // Candidatures des 7 derniers jours
   const il_y_a_7j = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()
-  const recentes = candidatures.filter((c: any) => c.date_candidature > il_y_a_7j).length
+  const recentes = candidatures.filter((c) => c.date_candidature > il_y_a_7j).length
 
   res.json({ total_candidatures, en_attente, valides, honorees, publications, taux_conversion, total_places, places_utilisees, recentes_7j: recentes, offres })
 })
@@ -696,8 +696,8 @@ app.get('/influenceurs/:id/profil-public', userAuth, async (req, res) => {
     .eq('auteur_role', 'restaurateur')
     .eq('candidatures.influenceur_id', req.params.id)
 
-  const notes = (avisData || []).map((a: any) => a.note)
-  const moyenne = notes.length ? (notes.reduce((a: number, b: number) => a + b, 0) / notes.length).toFixed(1) : null
+  const notes = (avisData || []).map((a) => a.note)
+  const moyenne = notes.length ? (notes.reduce((a, b) => a + b, 0) / notes.length).toFixed(1) : null
 
   res.json({ influenceur: inf, collabs: collabs || [], moyenne, total_avis: notes.length })
 })
