@@ -684,7 +684,7 @@ app.get('/influenceurs/:id/profil-public', userAuth, async (req, res) => {
   // Publications soumises (collaborations honorées)
   const { data: collabs } = await supabase
     .from('candidatures')
-    .select('id, post_publie, lien_publication, date_candidature, offres(titre, restaurants(nom))')
+    .select('id, post_publie, lien_publication, capture_story, date_candidature, offres(titre, restaurants(nom))')
     .eq('influenceur_id', req.params.id)
     .in('statut', ['honoree', 'valide'])
     .eq('post_publie', true)
