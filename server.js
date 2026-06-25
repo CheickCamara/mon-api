@@ -533,6 +533,28 @@ app.post('/mon-espace/candidatures/:id/upload-story', userAuth, upload.single('f
   res.json({ url: urlData.publicUrl })
 })
 
+// Upload photo restaurant
+app.post('/restaurateur/mon-restaurant/photo', userAuth, upload.single('photo'), async (req, res) => {
+  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
+  if (!req.file) return res.status(400).json({ error: 'Aucun fichier reçu' })
+
+  const { buffer, mimetype, originalname } = req.file
+  const ext = originalname.split('.').pop() || 'jpg'
+  const fileName = `restaurant_${req.user.restaurant_id}_${Date.now()}.${ext}`
+
+  const { error } = await supabaseAdmin.storage
+    .from('Publications')
+    .upload(fileName, buffer, { contentType: mimetype, upsert: true })
+
+  if (error) return res.status(500).json({ error: error.message })
+
+  const { data: urlData } = supabaseAdmin.storage.from('Publications').getPublicUrl(fileName)
+  const imageUrl = urlData.publicUrl
+
+  await supabase.from('restaurants').update({ image: imageUrl }).eq('id', req.user.restaurant_id)
+  res.json({ url: imageUrl })
+})
+
 // Accepter ou refuser une candidature (restaurateur)
 app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
   if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
