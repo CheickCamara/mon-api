@@ -869,6 +869,31 @@ app.post('/auth/inscription-influenceur', async (req, res) => {
     return res.status(500).json({ error: error.message })
   }
   const token = jwt.sign({ id: data.id, role: 'influenceur' }, JWT_SECRET, { expiresIn: '7d' })
+
+  // Email de bienvenue influenceur
+  try {
+    await resend.emails.send({
+      from: 'Pop Fluence <contact@popfluence.io>',
+      to: email,
+      subject: 'Bienvenue sur Pop Fluence 🎉',
+      html: `
+        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px">
+          <h1 style="color:#7c3aed;font-size:1.6rem;margin-bottom:8px">Bienvenue, ${nom} ! 🎉</h1>
+          <p style="color:#374151;line-height:1.7">Ton compte influenceur est créé. Voici ce que tu peux faire dès maintenant :</p>
+          <ol style="color:#374151;line-height:2">
+            <li>📍 <strong>Consulte les offres disponibles</strong> près de chez toi</li>
+            <li>⚡ <strong>Candidate en 1 clic</strong> aux restaurants qui correspondent à ton audience</li>
+            <li>🍽️ <strong>Profite d'un repas offert</strong> en échange d'une publication</li>
+          </ol>
+          <div style="margin:28px 0">
+            <a href="${SITE_URL}" style="background:#7c3aed;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700">Voir les offres disponibles →</a>
+          </div>
+          <p style="color:#6b7280;font-size:0.85rem">L'équipe Pop Fluence</p>
+        </div>
+      `,
+    })
+  } catch {}
+
   res.json({ token, utilisateur: data })
 })
 
@@ -923,6 +948,32 @@ app.post('/auth/inscription-restaurateur', async (req, res) => {
     return res.status(500).json({ error: error.message })
   }
   const token = jwt.sign({ id: data.id, role: 'restaurateur', restaurant_id: resto.id }, JWT_SECRET, { expiresIn: '7d' })
+
+  // Email de bienvenue restaurateur
+  try {
+    await resend.emails.send({
+      from: 'Pop Fluence <contact@popfluence.io>',
+      to: email,
+      subject: `Bienvenue sur Pop Fluence — ${nom_etablissement}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px">
+          <h1 style="color:#f59e0b;font-size:1.6rem;margin-bottom:8px">Bienvenue, ${nom} ! 🍽️</h1>
+          <p style="color:#374151;line-height:1.7">Ton restaurant <strong>${nom_etablissement}</strong> est bien inscrit. Votre dossier est en cours de validation (sous 48 h).</p>
+          <p style="color:#374151;line-height:1.7">En attendant, voici comment préparer votre lancement :</p>
+          <ol style="color:#374151;line-height:2">
+            <li>✅ <strong>Complète le profil</strong> de ton restaurant (description, téléphone)</li>
+            <li>🎁 <strong>Crée ta première offre</strong> dès que ton compte est validé</li>
+            <li>👤 <strong>Reçois des candidatures</strong> d'influenceurs qualifiés</li>
+          </ol>
+          <div style="margin:28px 0">
+            <a href="${SITE_URL}" style="background:#f59e0b;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700">Accéder à mon espace →</a>
+          </div>
+          <p style="color:#6b7280;font-size:0.85rem">L'équipe Pop Fluence</p>
+        </div>
+      `,
+    })
+  } catch {}
+
   res.json({ token, utilisateur: { ...data, role: 'restaurateur' } })
 })
 
