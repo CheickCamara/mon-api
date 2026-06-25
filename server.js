@@ -686,7 +686,8 @@ app.get('/influenceurs/:id/profil-public', userAuth, async (req, res) => {
     .from('candidatures')
     .select('id, post_publie, lien_publication, date_candidature, offres(titre, restaurants(nom))')
     .eq('influenceur_id', req.params.id)
-    .eq('statut', 'honoree')
+    .in('statut', ['honoree', 'valide'])
+    .eq('post_publie', true)
     .order('date_candidature', { ascending: false })
 
   // Avis reçus de restaurateurs
