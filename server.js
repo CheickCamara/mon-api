@@ -375,6 +375,50 @@ app.get('/mon-espace/notifications', userAuth, async (req, res) => {
 
 // ─── ESPACE RESTAURATEUR ──────────────────────────────────────────────────────
 
+// Stats du restaurateur
+app.get('/restaurateur/stats', userAuth, async (req, res) => {
+  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
+  const rid = req.user.restaurant_id
+
+  const [candidaturesRes, offresRes, publiesRes, honoreesRes] = await Promise.all([
+    supabase.from('candidatures').select('id, statut, date_candidature', { count: 'exact' }).eq('restaurant_id', rid),
+    supabase.from('offres').select('id, titre, nombre_places, places_restantes, statut').eq('restaurant_id', rid),
+    supabase.from('candidatures').select('id', { count: 'exact' }).eq('restaurant_id', rid).not('lien_publication', 'is', null),
+    supabase.from('candidatures').select('id', { count: 'exact' }).eq('restaurant_id', rid).eq('statut', 'honoree'),
+  ])
+
+  const candidatures = candidaturesRes.data ?? []
+  const total_candidatures = candidaturesRes.count ?? 0
+  const en_attente = candidatures.filter((c: any) => c.statut === 'en_attente').length
+  const valides = candidatures.filter((c: any) => c.statut === 'valide').length
+  const honorees = honoreesRes.count ?? 0
+  const publications = publiesRes.count ?? 0
+  const offres = offresRes.data ?? []
+  const total_places = offres.reduce((acc: number, o: any) => acc + (o.nombre_places ?? 0), 0)
+  const places_utilisees = offres.reduce((acc: number, o: any) => acc + ((o.nombre_places ?? 0) - (o.places_restantes ?? 0)), 0)
+  const taux_conversion = total_candidatures > 0 ? Math.round((honorees / total_candidatures) * 100) : 0
+
+  // Candidatures des 7 derniers jours
+  const il_y_a_7j = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()
+  const recentes = candidatures.filter((c: any) => c.date_candidature > il_y_a_7j).length
+
+  res.json({ total_candidatures, en_attente, valides, honorees, publications, taux_conversion, total_places, places_utilisees, recentes_7j: recentes, offres })
+})
+
+// Notifications restaurateur (nouvelles candidatures)
+app.get('/restaurateur/notifications', userAuth, async (req, res) => {
+  if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
+  const depuis = req.query.depuis
+  let query = supabase
+    .from('candidatures')
+    .select('id', { count: 'exact' })
+    .eq('restaurant_id', req.user.restaurant_id)
+    .eq('statut', 'en_attente')
+  if (depuis) query = query.gt('date_candidature', depuis)
+  const { count } = await query
+  res.json({ count: count ?? 0 })
+})
+
 // Mon restaurant
 app.get('/restaurateur/mon-restaurant', userAuth, async (req, res) => {
   if (req.user.role !== 'restaurateur') return res.status(403).json({ error: 'Accès réservé aux restaurateurs' })
