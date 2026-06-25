@@ -554,9 +554,14 @@ app.put('/restaurateur/candidatures/:id', userAuth, async (req, res) => {
   const { error } = await supabase.from('candidatures').update({ statut }).eq('id', req.params.id)
   if (error) return res.status(500).json({ error: error.message })
 
-  // Décrémenter uniquement si on passe à valide depuis un autre statut
-  if (statut === 'valide' && cand.statut !== 'valide' && cand.offre_id) {
-    await supabase.rpc('decrement_places', { p_offre_id: cand.offre_id })
+  // Décrémenter si on passe à valide, ou si on passe à honoree sans être passé par valide
+  if (cand.offre_id) {
+    const doitDecrementer =
+      (statut === 'valide' && cand.statut !== 'valide') ||
+      (statut === 'honoree' && cand.statut !== 'valide' && cand.statut !== 'honoree')
+    if (doitDecrementer) {
+      await supabase.rpc('decrement_places', { p_offre_id: cand.offre_id })
+    }
   }
 
   // Notifier l'influenceur par e-mail
