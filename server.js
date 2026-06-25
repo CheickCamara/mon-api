@@ -43,6 +43,7 @@ const JWT_SECRET = process.env.JWT_SECRET
 app.use(cors({
   origin: [
     'https://mon-site-omega-two.vercel.app',
+    'https://mon-admin-zeta.vercel.app',
     'https://popfluence.io',
     'https://www.popfluence.io',
     'http://localhost:5173',
