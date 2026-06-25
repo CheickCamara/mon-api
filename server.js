@@ -546,7 +546,7 @@ app.post('/restaurateur/mon-restaurant/photo', userAuth, upload.single('photo'),
     .from('Publications')
     .upload(fileName, buffer, { contentType: mimetype, upsert: true })
 
-  if (error) return res.status(500).json({ error: error.message })
+  if (error) return res.status(500).json({ error: error.message, hasServiceKey: !!process.env.SUPABASE_SERVICE_KEY })
 
   const { data: urlData } = supabaseAdmin.storage.from('Publications').getPublicUrl(fileName)
   const imageUrl = urlData.publicUrl
