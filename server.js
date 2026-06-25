@@ -1037,7 +1037,7 @@ app.post('/auth/reset-mot-de-passe', async (req, res) => {
 app.post('/admin/login', (req, res) => {
   const { password } = req.body
   if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Mot de passe incorrect' })
-  const token = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '24h' })
+  const token = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '7d' })
   res.json({ token })
 })
 
